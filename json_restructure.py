@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 OCR_API_KEY = os.getenv("OCR_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+CEREBRAS_API_KEY=os.getenv("CEREBRAS_API_KEY", "")
 
 app = FastAPI(title="MarkSheet AI Parser (Reasoning Edition)")
 
@@ -37,22 +38,13 @@ class Subject(BaseModel):
     title: str = Field(..., description="Course title")
     credits: str = Field(..., description="Credit hours")
     grade: str = Field(..., description="Grade awarded")
-    marks_obtained: Optional[str] = None
-    marks_total: Optional[str] = None
 
 class MarkSheetData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
-    name: str = Field(..., description="Student Name")
-    university: Optional[str] = Field(None, description="University Name")
-    college: Optional[str] = Field(None, description="College/Institute Name")
     registration_no: str = Field(..., description="Student Registration/Enrollment Number")
-    seat_no: Optional[str] = Field(None, description="Seat Number")
-    semester: Optional[str] = Field(None, description="Semester (e.g. Semester I)")
-    academic_year: Optional[str] = Field(None, description="Academic Year")
-    subjects: List[Subject]
+    name: str = Field(..., description="Student Name")
     gpa: Optional[str] = Field(None, description="Grade Point Average")
-    result_status: Optional[str] = Field(None, description="Final Result Status")
-    date_of_issue: Optional[str] = Field(None, description="Date of Issue")
+    subjects: List[Subject]
     merkle_hash: Optional[str] = Field(None, description="Keccak-256 Verification Hash")
 
 # PORT UTILITIES
@@ -111,20 +103,17 @@ def encode_image(image_bytes):
 
 # HASHING UTILITIES
 def normalize_for_hash(data: dict):
-    """Creates a deterministic string for hashing."""
+    """Creates a deterministic string for hashing (v2 simplified)."""
     parts = []
     # Core Metadata
-    parts.append(str(data.get("university", "")).strip())
-    parts.append(str(data.get("college", "")).strip())
-    parts.append(str(data.get("name", "")).strip())
     parts.append(str(data.get("registration_no", "")).strip())
-    parts.append(str(data.get("semester", "")).strip())
+    parts.append(str(data.get("name", "")).strip())
     
     # Subjects (Sorted by Code for determinism)
     subs = data.get("subjects", [])
-    sorted_subs = sorted(subs, key=lambda x: x.get("code", ""))
+    sorted_subs = sorted(subs, key=lambda x: (x.get("code", ""), x.get("title", "")))
     for s in sorted_subs:
-        parts.append(f"{s.get('code')}{s.get('grade')}{s.get('credits')}")
+        parts.append(f"{s.get('code')}{s.get('title')}{s.get('grade')}{s.get('credits')}")
     
     parts.append(str(data.get("gpa", "")).strip())
     return "|".join(parts).lower()
@@ -160,6 +149,37 @@ def generate_keccak256(text: str):
     k.update(text.encode('utf-8'))
     return k.hexdigest()
 
+def generate_with_cerebras(prompt: str):
+    """High-speed text-only extraction using Cerebras."""
+    try:
+        url = "https://api.cerebras.ai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            # "model": "llama3.1-8b",
+            "model": "",
+            "messages": [
+                {"role": "system", "content": "You are an expert marksheet parser. Output ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.0
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        res_json = response.json()
+        
+        if "choices" in res_json:
+            content = res_json["choices"][0]["message"]["content"]
+            return json.loads(content)
+        else:
+            logger.warning(f"Cerebras API Error: {res_json}")
+            return None
+    except Exception as e:
+        logger.warning(f"Cerebras extraction failed: {e}")
+        return None
+
 def generate_with_gemini(image_data, prompt: str):
     """Fallback to Gemini for high-precision vision parsing. image_data can be bytes or List[bytes]."""
     try:
@@ -175,13 +195,14 @@ def generate_with_gemini(image_data, prompt: str):
             contents.append(Image.open(io.BytesIO(image_data)))
         
         response = client.models.generate_content(
-            # model='gemini-3.1-flash-lite-preview',
-            model='gemini-2.5-flash-pro',
+            # model='gemini-1.5-flash-lite',
+            model='gemini-3.1-flash-lite-preview',
+            # model='gemini-1.5-flash',
             contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=MarkSheetData,
-                temperature=0.0
+                temperature=0.1
             )
         )
         return json.loads(response.text)
@@ -197,6 +218,7 @@ def generate_structured_data(image_data, ocr_text: str):
     
     prompt = f"""
 You are an expert marksheet parser. Extract ALL details from the provided OCR text and image with 100% literal precision.
+STRICT RULE: Do not correct spelling, do not format dates, do not normalize case, and do not infer missing data. Extract the text exactly as it appears in the OCR and Image.
 The document may contain trilingual text (English, Gujarati, Hindi). Extract exactly as visible.
 
 OCR TEXT:
@@ -204,29 +226,28 @@ OCR TEXT:
 
 JSON FORMAT:
 {{
-  "name": "Full Name",
-  "university": "University Name",
-  "college": "College Name",
   "registration_no": "Enrollment/Reg No",
-  "seat_no": "Seat No (if any)",
-  "semester": "Semester",
-  "academic_year": "Year",
+  "name": "Full Name",
+  "gpa": "GPA/SGPA/CGPA",
   "subjects": [
     {{
       "code": "Code", "title": "Subject Title", "credits": "CR", "grade": "GR",
-      "marks_obtained": "Marks (if any)", "marks_total": "Total (if any)"
     }}
-  ],
-  "gpa": "GPA/SGPA/CGPA",
-  "result_status": "Pass/Fail/Result Status",
-  "date_of_issue": "Date"
+  ]
 }}
 Return ONLY the JSON.
 """
 
-    # Try Gemini First (Handles multiple images natively)
+    # Try Cerebras First (Fast text-only extraction)
+    if CEREBRAS_API_KEY:
+        logger.info("Attempting primary extraction with Cerebras...")
+        cerebras_result = generate_with_cerebras(prompt)
+        if cerebras_result:
+            return cerebras_result
+
+    # Try Gemini Second (Handles multiple images natively if text extraction fails or as vision verify)
     if GEMINI_API_KEY:
-        logger.info("Attempting primary extraction with Gemini...")
+        logger.info("Attempting high-precision extraction with Gemini...")
         gemini_result = generate_with_gemini(image_data, prompt)
         if gemini_result:
             return gemini_result
@@ -371,23 +392,16 @@ async def index():
         <div class="loader" id="l">⚡ AI is Reasoning through your document...</div>
         <div id="results">
             <div class="meta-card">
-                <div id="uni" style="color:var(--primary); font-weight:600; font-size:1.1em; margin-bottom:2px;"></div>
-                <div id="coll" style="font-size:0.9em; opacity:0.8; margin-bottom:15px;"></div>
+                <div id="n" style="color:var(--primary); font-weight:600; font-size:1.1em; margin-bottom:2px;"></div>
+                <div id="r" style="font-size:0.9em; opacity:0.8; margin-bottom:15px;"></div>
                 <div class="grid">
-                    <div><div class="label">Student Name</div><div id="n" class="val"></div></div>
-                    <div><div class="label">Reg No / Enrollment</div><div id="r" class="val"></div></div>
-                    <div><div class="label">Semester</div><div id="sm" class="val"></div></div>
-                    <div><div class="label">Academic Year</div><div id="ay" class="val"></div></div>
+                    <div><div class="label">GPA</div><div id="g" class="val"></div></div>
                 </div>
             </div>
             <table>
-                <thead><tr><th>Code</th><th>Subject</th><th>Credits</th><th>Grade</th><th>Marks</th></tr></thead>
+                <thead><tr><th>Code</th><th>Subject</th><th>Credits</th><th>Grade</th></tr></thead>
                 <tbody id="b"></tbody>
             </table>
-            <div class="grid" style="margin-top:20px;">
-                <div><div class="label">GPA</div><div id="g" class="val"></div></div>
-                <div><div class="label">Status</div><div id="st" class="val"></div></div>
-            </div>
             <div class="hash-box">
                 <div class="label" style="color:#6ee7b7; margin-bottom:5px;">KECCAK-256 VERIFICATION HASH</div>
                 <span id="h"></span>
@@ -409,16 +423,14 @@ async def index():
             try {
                 const res = await fetch('/parse-marksheet', {method:'POST', body:fd});
                 const d = await res.json();
-                document.getElementById('uni').innerText = d.university;
-                document.getElementById('coll').innerText = d.college;
                 document.getElementById('n').innerText = d.name;
-                document.getElementById('r').innerText = d.registration_no;
-                document.getElementById('sm').innerText = d.semester;
-                document.getElementById('ay').innerText = d.academic_year;
+                document.getElementById('r').innerText = 'Registration/Enrollment: ' + d.registration_no;
                 document.getElementById('g').innerText = d.gpa;
-                document.getElementById('st').innerText = d.result_status || 'N/A';
                 document.getElementById('h').innerText = d.merkle_hash;
-                document.getElementById('json-log').innerText = JSON.stringify(d, null, 2);
+                
+                // Exclude merkle_hash from visual log for clarity
+                const { merkle_hash, ...logData } = d;
+                document.getElementById('json-log').innerText = JSON.stringify(logData, null, 2);
                 
                 document.getElementById('b').innerHTML = d.subjects.map(s => `
                     <tr>
@@ -426,7 +438,6 @@ async def index():
                         <td>${s.title || '-'}</td>
                         <td>${s.credits || '-'}</td>
                         <td>${s.grade || '-'}</td>
-                        <td>${s.marks_obtained || '-'}/${s.marks_total || '-'}</td>
                     </tr>`).join('');
                 document.getElementById('results').style.display='block';
                 console.log("Extraction Success:", d);
