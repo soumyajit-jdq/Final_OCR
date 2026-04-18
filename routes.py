@@ -20,7 +20,7 @@ async def validate_document(file: UploadFile = File()):
         logger.exception("Validation route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/extract", response_model=MarkSheetData)
+@router.post("/marksheet_data_extraction", response_model=MarkSheetData)
 async def extract_document(file: UploadFile = File()):
     """
     Step 2: Full Extraction pipeline
@@ -66,3 +66,52 @@ async def extract_document(file: UploadFile = File()):
     except Exception as e:
         logger.exception("Extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/certificate")
+async def extract_certificate(file: UploadFile = File()):
+    """
+    Step 2: Certificate Extraction pipeline
+    """
+    try:
+        file_bytes = await file.read()
+
+        # 1. Automatic Validation
+        validation = await ProcessingService.validate_document(file_bytes, file.filename)
+        if not validation.is_valid:
+            logger.warning(f"Quality Check Failed: {validation.instruction}")
+            raise HTTPException(status_code=400, detail=validation.instruction)
+
+        # TODO: Implement Certificate specific logic
+        # For now, following the marksheet pattern but with placeholders
+        return {"message": "Certificate extraction route ready. Awaiting model/service details."}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.exception("Certificate extraction route failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/transcript")
+async def extract_transcript(file: UploadFile = File()):
+    """
+    Step 2: Transcript Extraction pipeline
+    """
+    try:
+        file_bytes = await file.read()
+
+        # 1. Automatic Validation
+        validation = await ProcessingService.validate_document(file_bytes, file.filename)
+        if not validation.is_valid:
+            logger.warning(f"Quality Check Failed: {validation.instruction}")
+            raise HTTPException(status_code=400, detail=validation.instruction)
+
+        # TODO: Implement Transcript specific logic
+        # For now, following the marksheet pattern but with placeholders
+        return {"message": "Transcript extraction route ready. Awaiting model/service details."}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.exception("Transcript extraction route failed")
+        raise HTTPException(status_code=500, detail=str(e))
+

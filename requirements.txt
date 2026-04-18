@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+httpx
+Pillow
+pymupdf
+anyio
+pycryptodome
+google-genai
+opencv-python-headless
+numpy
+psutil
