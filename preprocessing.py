@@ -41,10 +41,9 @@ def get_skew_angle(image):
     rect = cv2.minAreaRect(largest_contour)
     angle = rect[-1]
     
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
+    # Normalize the angle to be within [-45, 45)
+    # This handles both old and new OpenCV angle conventions robustly.
+    angle = (angle + 45) % 90 - 45
     return angle
 
 def is_blank_or_black(image):
@@ -116,7 +115,7 @@ def validate_image_quality(file_bytes: bytes, filename: str = "document"):
                     return False, f"Page {page_num + 1} is too blurry (Score: {score:.1f}). Please upload a clear document."
                 
                 angle = get_skew_angle(image)
-                if abs(angle) > 10.0:
+                if abs(angle) > 15.0:
                     return False, f"Page {page_num + 1} is slanted ({abs(angle):.1f}°). Please ensure the document is straight."
             
             page_count = len(doc)
@@ -140,7 +139,7 @@ def validate_image_quality(file_bytes: bytes, filename: str = "document"):
         return False, f"The photo is too blurry (Score: {score:.1f}). Please upload a clear photo."
     
     angle = get_skew_angle(image)
-    if abs(angle) > 10.0:
+    if abs(angle) > 15.0:
         return False, f"The photo is slanted ({abs(angle):.1f}°). Please capture the document straight from above."
     
     return True, "Photo quality is excellent."
