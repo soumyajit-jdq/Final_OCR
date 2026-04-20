@@ -56,8 +56,8 @@ async def extract_document(file: UploadFile = File()):
         structured_dict = await ProcessingService.extract_with_ai(processing_image, ocr_text)
         
         # 4. Final Security Hash (Awaited)
-        norm_text = ProcessingService.normalize_for_hash(structured_dict)
-        structured_dict["merkle_hash"] = await ProcessingService.generate_keccak256(norm_text)
+        # norm_text = ProcessingService.build_canonical_payload(structured_dict)
+        # structured_dict["merkle_hash"] = await ProcessingService.generate_keccak256(norm_text)
         
         return MarkSheetData(**structured_dict)
         
