@@ -8,7 +8,8 @@ import logging
 import fitz
 import anyio
 from PIL import Image
-from Crypto.Hash import keccak
+from web3 import Web3
+from collections import OrderedDict
 from dotenv import load_dotenv
 from models import MarkSheetData, ValidationResponse
 from preprocessing import validate_image_quality
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 OCR_API_KEY = os.getenv("OCR_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
 
 class ProcessingService:
     @staticmethod
@@ -84,22 +86,30 @@ class ProcessingService:
         return base64.b64encode(image_bytes).decode('utf-8')
 
     @staticmethod
-    def normalize_for_hash(data: dict):
-        """Creates a deterministic string for hashing."""
-        parts = []
-        parts.append(str(data.get("university", "")).strip())
-        parts.append(str(data.get("college", "")).strip())
-        parts.append(str(data.get("name", "")).strip())
-        parts.append(str(data.get("registration_no", "")).strip())
-        parts.append(str(data.get("semester", "")).strip())
-        
-        subs = data.get("subjects", [])
-        sorted_subs = sorted(subs, key=lambda x: x.get("code", ""))
-        for s in sorted_subs:
-            parts.append(f"{s.get('code')}{s.get('grade')}{s.get('credits')}")
-        
-        parts.append(str(data.get("gpa", "")).strip())
-        return "|".join(parts).lower()
+    def build_canonical_payload(data: dict) -> str:
+        """
+        Builds a canonical JSON string with STRICT key ordering:
+          registration_no -> name -> gpa -> subjects
+        Each subject maintains: code -> title -> credit_points -> grade
+        """
+        subjects = []
+        for s in data.get("subjects", []):
+            ordered_subject = OrderedDict([
+                ("code", str(s.get("code", ""))),
+                ("title", str(s.get("title", ""))),
+                ("credit_points", str(s.get("credit_points", ""))),
+                # ("grade", str(s.get("grade", "")))
+            ])
+            subjects.append(ordered_subject)
+
+        payload = OrderedDict([
+            ("registration_no", str(data.get("registration_no", ""))),
+            ("name", str(data.get("name", ""))),
+            ("gpa", str(data.get("gpa", ""))),
+            ("subjects", subjects)
+        ])
+
+        return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
     async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 3):
@@ -128,11 +138,75 @@ class ProcessingService:
 
     @staticmethod
     async def generate_keccak256(text: str):
+        """Generates an Ethereum-standard Keccak-256 hash using Web3.py."""
         def sync_hash():
-            k = keccak.new(digest_bits=256)
-            k.update(text.encode('utf-8'))
-            return k.hexdigest()
+            hash_bytes = Web3.keccak(text=text)
+            return Web3.to_hex(hash_bytes)
         return await anyio.to_thread.run_sync(sync_hash)
+
+    @staticmethod
+    async def generate_with_cerebras(prompt: str):
+        """High-speed text-only extraction using Cerebras."""
+        try:
+            url = "https://api.cerebras.ai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # --- PASS 1: Initial Extraction ---
+            payload_1 = {
+                "model": "",
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": "You are a VERBATIM marksheet parser. Extract exactly as visible in OCR. Return ONLY JSON."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+            async with httpx.AsyncClient() as client:
+                resp_1_raw = await client.post(url, headers=headers, json=payload_1, timeout=30)
+                resp_1 = resp_1_raw.json()
+                
+            if "choices" not in resp_1:
+                return None
+            initial_json = resp_1["choices"][0]["message"]["content"]
+            
+            # --- PASS 2: Self-Correction Loop ---
+            correction_system_prompt = (
+                "You are a character-level QA auditor. Compare the provided JSON against the Raw OCR Text.\n"
+                "STRICT AUDIT RULE: Check if 'credit_points' contains the Total Credit Points (usually 10-20) and 'grade' contains the Grade Point.\n"
+                "If you see a shift (e.g., 'credit_points' has 2 instead of 17.6), fix it immediately.\n"
+                "Identify and fix any truncated words or misaligned columns.\n"
+                "Return ONLY the corrected JSON object."
+            )
+            correction_user_prompt = f"RAW OCR TEXT:\n{prompt}\n\nINITIAL JSON TO CORRECT:\n{initial_json}"
+            
+            payload_2 = {
+                "model": "",
+                "messages": [
+                    {"role": "system", "content": correction_system_prompt},
+                    {"role": "user", "content": correction_user_prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+            async with httpx.AsyncClient() as client:
+                resp_2_raw = await client.post(url, headers=headers, json=payload_2, timeout=30)
+                resp_2 = resp_2_raw.json()
+            
+            if "choices" in resp_2:
+                corrected_content = resp_2["choices"][0]["message"]["content"]
+                logger.info("Self-Correction loop completed.")
+                return json.loads(corrected_content)
+            
+            return json.loads(initial_json)
+        except Exception as e:
+            logger.warning(f"Cerebras extraction/correction failed: {e}")
+            return None
 
     @staticmethod
     async def extract_with_ai(image_data, ocr_text: str):
@@ -140,9 +214,47 @@ class ProcessingService:
         primary_image_bytes = image_data[0] if isinstance(image_data, list) else image_data
         base64_img = ProcessingService.encode_image(primary_image_bytes)
         
-        prompt = f"Extract marksheet data into JSON format accurately. OCR Text: {ocr_text}"
+        prompt = f"""
+You are an expert VERBATIM marksheet parser. Extract ALL details from the provided OCR text and image with 100% character-level precision.
+STRICT RULE: Do not correct spelling, do not format dates, do not normalize case, and do not truncate or shorten words. Extract text EXACTLY as it appears.
+The document may contain trilingual text (English, Gujarati, Hindi). Extract exactly as visible.
 
-        # 1. Try Gemini (Async Client)
+#### COLUMN MAPPING RULE ####
+A typical row looks like: [SR NO] [COURSE CATEGORY] [COURSE CODE] [TITLE] [CREDIT HOURS] [GRADE POINTS] [CREDIT POINTS]
+Example: "1 ALLIED ABM 517 AGRICULTURAL MARKETING MANAGEMENT 2 8.8 17.6"
+- "code": "ABM 517"
+- "title": "AGRICULTURAL MARKETING MANAGEMENT"
+- "credit_points": "17.6" (This is the total Credit Points. Always use the last value.)
+- "grade": "8.8" (This is the Grade Points. Always use this value.)
+- DO NOT use the middle number (2) which is the credit hours.
+
+OCR TEXT:
+{ocr_text}
+
+JSON FORMAT:
+{{
+  "registration_no": "Enrollment/Reg No",
+  "name": "Full Name",
+  "gpa": "GPA/SGPA/CGPA",
+  "subjects": [
+    {{
+      "code": "Code", 
+      "title": "Subject Title", 
+      "credit_points": "Total Credit Points ONLY", 
+    }}
+  ]
+}}
+Return ONLY the JSON.
+"""
+
+        # 1. Try Cerebras First
+        if CEREBRAS_API_KEY:
+            logger.info("Attempting primary extraction with Cerebras")
+            cerebras_result = await ProcessingService.generate_with_cerebras(prompt)
+            if cerebras_result:
+                return cerebras_result
+
+        # 2. Try Gemini (Async Client)
         if GEMINI_API_KEY:
             try:
                 from google import genai
@@ -170,15 +282,19 @@ class ProcessingService:
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=MarkSheetData,
-                        temperature=0.0
+                        temperature=0.1
                     )
                 )
                 return json.loads(response.text)
             except Exception as e:
                 logger.warning(f"Gemini Async failed: {e}")
 
-        # 2. Fallback to OpenRouter (Reasoning Models) using httpx
-        models = ["nvidia/nemotron-nano-12b-v2-vl:free", "liquid/lfm-2.5-1.2b-thinking:free"]
+        # 3. Fallback to OpenRouter (Reasoning Models) using httpx
+        models = [
+            "nvidia/nemotron-nano-12b-v2-vl:free", 
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "google/gemma-4-31b-it:free"
+        ]
         async with httpx.AsyncClient() as client:
             for model in models:
                 try:
