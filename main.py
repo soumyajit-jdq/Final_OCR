@@ -28,6 +28,10 @@ app.add_middleware(
 # Include Modular Routes
 app.include_router(ocr_router, prefix="/api/v1")
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "MarkSheet OCR Backend"}
+
 def force_free_port(port: int):
     """Kills any process using the specified port."""
     for conn in psutil.net_connections():
