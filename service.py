@@ -371,6 +371,20 @@ Return ONLY the JSON.
 You are an expert academic transcript parser. Extract ALL fields into a NESTED HIERARCHY.
 STRICT RULE: Format Year and Semester as ALL CAPS WORDS.
 
+#### FIELD EXTRACTION RULES ####
+1. **Header Info**: Look for "Sr. No.", "Registration No.", "Name", "Faculty", "Degree", "Admission Year", "Completion Year", "Medium of instruction", and "College".
+2. **Summary Info**: Look for "Total Credit Hours", "Total Credit Points", "O.G.P.A.", "Result", "Class", and "Percentage" (usually at the end).
+3. **Course Alignment Fix**: 
+   - CRITICAL: In the OCR text, numbers often appear on a DIFFERENT line than the course title.
+   - For non-credit courses (e.g., NSS/NCC, Physical Education), the grade is often 'S' (Satisfactory). 
+   - STRICT RULE: NEVER put 'S' in "credit_points". For non-credit courses, "credit_points" MUST be '--'.
+   - Use the provided images to visually anchor every number to its correct course.
+4. **GPA/CGPA**: For each semester, extract both the "G.P.A." and the cumulative "C.G.P.A." provided at the end of the semester block.
+
+#### FORMATTING ####
+- "year": MUST BE "FIRST YEAR", "SECOND YEAR", "THIRD YEAR", or "FOURTH YEAR".
+- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", ..., "EIGHTH SEMESTER".
+
 OCR TEXT:
 {ocr_text}
 
