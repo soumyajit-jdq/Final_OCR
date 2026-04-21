@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from service import ProcessingService
-from models import MarkSheetData, ValidationResponse
+from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,17 +28,16 @@ async def extract_document(file: UploadFile = File()):
     try:
         file_bytes = await file.read()
         
-        # 1. Automatic Validation (Awaited)
+        # 1. Automatic Validation
         validation = await ProcessingService.validate_document(file_bytes, file.filename)
         if not validation.is_valid:
             logger.warning(f"Quality Check Failed: {validation.instruction}")
             raise HTTPException(status_code=400, detail=validation.instruction)
             
-        # 2. Proceed to Extraction (Non-blocking)
+        # 2. Proceed to Extraction
         ocr_text = ""
         processing_image = file_bytes
         
-        # Handle PDF vs Image
         if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
             logger.info("Extracting data from PDF")
             img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes)
@@ -46,19 +45,22 @@ async def extract_document(file: UploadFile = File()):
                 processing_image = img_list
                 ocr_text = raw_text
         
-        # Secondary OCR if text is sparse
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
         if len(ocr_text) < 50:
             logger.info("Sparse text detected, running async OCR")
             ocr_text = await ProcessingService.run_ocr(ocr_source)
             
-        # 3. AI Structured Extraction (Awaited)
+        # 3. AI Structured Extraction
+        doc_type = await ProcessingService.classify_document(ocr_text)
+        logger.info(f"Step 2 (Classification): Identified as {doc_type}")
+        
+        if doc_type != "marksheet":
+            logger.warning(f"Classification Mismatch: Expected marksheet, found {doc_type}")
+            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+            
         structured_dict = await ProcessingService.extract_with_ai(processing_image, ocr_text)
         
-        # 4. Final Security Hash (Awaited)
-        # norm_text = ProcessingService.build_canonical_payload(structured_dict)
-        # structured_dict["merkle_hash"] = await ProcessingService.generate_keccak256(norm_text)
-        
+        # 4. Final Object Construction
         return MarkSheetData(**structured_dict)
         
     except HTTPException as he:
@@ -67,7 +69,7 @@ async def extract_document(file: UploadFile = File()):
         logger.exception("Extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/certificate")
+@router.post("/certificate", response_model=CertificateData)
 async def extract_certificate(file: UploadFile = File()):
     """
     Step 2: Certificate Extraction pipeline
@@ -81,9 +83,31 @@ async def extract_certificate(file: UploadFile = File()):
             logger.warning(f"Quality Check Failed: {validation.instruction}")
             raise HTTPException(status_code=400, detail=validation.instruction)
 
-        # TODO: Implement Certificate specific logic
-        # For now, following the marksheet pattern but with placeholders
-        return {"message": "Certificate extraction route ready. Awaiting model/service details."}
+        # 2. Proceed to Extraction
+        ocr_text = ""
+        processing_image = file_bytes
+        
+        if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
+            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=1)
+            if img_list:
+                processing_image = img_list
+                ocr_text = raw_text
+        
+        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        if len(ocr_text) < 50:
+            ocr_text = await ProcessingService.run_ocr(ocr_source)
+
+        # 3. Classification Gate
+        doc_type = await ProcessingService.classify_document(ocr_text)
+        logger.info(f"Step 2 (Classification): Identified as {doc_type}")
+        if doc_type != "certificate":
+            logger.warning(f"Classification Mismatch: Expected certificate, found {doc_type}")
+            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+
+        # 4. Extraction
+        structured_dict = await ProcessingService.extract_certificate_with_ai(processing_image, ocr_text)
+        
+        return CertificateData(**structured_dict)
 
     except HTTPException as he:
         raise he
@@ -91,10 +115,10 @@ async def extract_certificate(file: UploadFile = File()):
         logger.exception("Certificate extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/transcript")
+@router.post("/transcript", response_model=TranscriptData)
 async def extract_transcript(file: UploadFile = File()):
     """
-    Step 2: Transcript Extraction pipeline
+    Step 2: Transcript Extraction pipeline (Hierarchical)
     """
     try:
         file_bytes = await file.read()
@@ -105,13 +129,36 @@ async def extract_transcript(file: UploadFile = File()):
             logger.warning(f"Quality Check Failed: {validation.instruction}")
             raise HTTPException(status_code=400, detail=validation.instruction)
 
-        # TODO: Implement Transcript specific logic
-        # For now, following the marksheet pattern but with placeholders
-        return {"message": "Transcript extraction route ready. Awaiting model/service details."}
+        # 2. Proceed to Extraction
+        ocr_text = ""
+        processing_image = file_bytes
+        
+        if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
+            logger.info("Extracting data from Transcript PDF (up to 3 pages)")
+            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=3)
+            if img_list:
+                processing_image = img_list
+                ocr_text = raw_text
+        
+        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        if len(ocr_text) < 50:
+            logger.info("Sparse Transcript text detected, running full OCR")
+            ocr_text = await ProcessingService.run_ocr(ocr_source)
+            
+        # 3. Classification Gate
+        doc_type = await ProcessingService.classify_document(ocr_text)
+        logger.info(f"Step 2 (Classification): Identified as {doc_type}")
+        if doc_type != "transcript":
+            logger.warning(f"Classification Mismatch: Expected transcript, found {doc_type}")
+            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+
+        # 4. AI Hierarchical Extraction
+        structured_dict = await ProcessingService.extract_transcript_with_ai(processing_image, ocr_text)
+        
+        return TranscriptData(**structured_dict)
 
     except HTTPException as he:
         raise he
     except Exception as e:
         logger.exception("Transcript extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
-

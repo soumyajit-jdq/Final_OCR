@@ -11,7 +11,7 @@ from PIL import Image
 from web3 import Web3
 from collections import OrderedDict
 from dotenv import load_dotenv
-from models import MarkSheetData, ValidationResponse
+from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData
 from preprocessing import validate_image_quality
 
 load_dotenv()
@@ -88,17 +88,14 @@ class ProcessingService:
     @staticmethod
     def build_canonical_payload(data: dict) -> str:
         """
-        Builds a canonical JSON string with STRICT key ordering:
-          registration_no -> name -> gpa -> subjects
-        Each subject maintains: code -> title -> credit_points -> grade
+        Builds a canonical JSON string for Marksheets.
         """
         subjects = []
         for s in data.get("subjects", []):
             ordered_subject = OrderedDict([
                 ("code", str(s.get("code", ""))),
                 ("title", str(s.get("title", ""))),
-                ("credit_points", str(s.get("credit_points", ""))),
-                # ("grade", str(s.get("grade", "")))
+                ("credit_points", str(s.get("credit_points", "")))
             ])
             subjects.append(ordered_subject)
 
@@ -108,7 +105,65 @@ class ProcessingService:
             ("gpa", str(data.get("gpa", ""))),
             ("subjects", subjects)
         ])
+        return json.dumps(payload, separators=(',', ':'))
 
+    @staticmethod
+    def build_transcript_canonical_payload(data: dict) -> str:
+        """
+        Builds a canonical JSON string for the nested transcript structure.
+        Ensures stable hashing through strict key ordering.
+        """
+        years = []
+        for y in data.get("years", []):
+            semesters = []
+            for s in y.get("semesters", []):
+                courses = []
+                for c in s.get("courses", []):
+                    courses.append(OrderedDict([
+                        ("course_number", str(c.get("course_number", ""))),
+                        ("title", str(c.get("title", ""))),
+                        ("credit_points", str(c.get("credit_points", "")))
+                    ]))
+                semesters.append(OrderedDict([
+                    ("semester", str(s.get("semester", ""))),
+                    ("gpa", str(s.get("gpa", ""))),
+                    ("cgpa", str(s.get("cgpa", ""))),
+                    ("courses", courses)
+                ]))
+            years.append(OrderedDict([
+                ("year", str(y.get("year", ""))),
+                ("semesters", semesters)
+            ]))
+
+        payload = OrderedDict([
+            ("registration_no", str(data.get("registration_no", ""))),
+            ("name", str(data.get("name", ""))),
+            ("degree", str(data.get("degree", ""))),
+            ("admission_year", str(data.get("admission_year", ""))),
+            ("completion_year", str(data.get("completion_year", ""))),
+            ("ogpa", str(data.get("ogpa", ""))),
+            ("result", str(data.get("result", ""))),
+            ("class_division", str(data.get("class_division", ""))),
+            ("years", years)
+        ])
+        return json.dumps(payload, separators=(',', ':'))
+
+    @staticmethod
+    def build_certificate_canonical_payload(data: dict) -> str:
+        """
+        Builds a canonical JSON string for academic certificates.
+        """
+        payload = OrderedDict([
+            ("certificate_no", str(data.get("certificate_no", ""))),
+            ("no", str(data.get("no", ""))),
+            ("university", str(data.get("university", ""))),
+            ("name", str(data.get("name", ""))),
+            ("degree", str(data.get("degree", ""))),
+            ("ogpa", str(data.get("ogpa", ""))),
+            ("year", str(data.get("year", ""))),
+            ("date", str(data.get("date", ""))),
+            ("class_division", str(data.get("class_division", "")))
+        ])
         return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
@@ -156,7 +211,7 @@ class ProcessingService:
             
             # --- PASS 1: Initial Extraction ---
             payload_1 = {
-                "model": "",
+                "model": "llama3.1-8b",
                 "messages": [
                     {
                         "role": "system", 
@@ -177,16 +232,13 @@ class ProcessingService:
             
             # --- PASS 2: Self-Correction Loop ---
             correction_system_prompt = (
-                "You are a character-level QA auditor. Compare the provided JSON against the Raw OCR Text.\n"
-                "STRICT AUDIT RULE: Check if 'credit_points' contains the Total Credit Points (usually 10-20) and 'grade' contains the Grade Point.\n"
-                "If you see a shift (e.g., 'credit_points' has 2 instead of 17.6), fix it immediately.\n"
-                "Identify and fix any truncated words or misaligned columns.\n"
+                "You are a character-level QA auditor. Correct any JSON formatting issues and ensure alignment with OCR.\n"
                 "Return ONLY the corrected JSON object."
             )
             correction_user_prompt = f"RAW OCR TEXT:\n{prompt}\n\nINITIAL JSON TO CORRECT:\n{initial_json}"
             
             payload_2 = {
-                "model": "",
+                "model": "llama3.1-8b",
                 "messages": [
                     {"role": "system", "content": correction_system_prompt},
                     {"role": "user", "content": correction_user_prompt}
@@ -209,24 +261,51 @@ class ProcessingService:
             return None
 
     @staticmethod
+    async def classify_document(ocr_text: str) -> str:
+        """Uses Cerebras (Llama) to categorize the document type."""
+        if not CEREBRAS_API_KEY:
+            return "unknown"
+        try:
+            url = "https://api.cerebras.ai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
+            prompt = (
+                "Identify the document type strictly based on scope:\n"
+                "1. 'marksheet': A record for a SINGLE examination session, semester, or year (e.g. 'Statement of Marks', 'Grade Card', 'Evaluation Report').\n"
+                "2. 'transcript': A CONSOLIDATED academic record spanning the entire degree or multiple years (e.g. 'Official Transcript', 'Consolidated Marks').\n"
+                "3. 'certificate': A degree certificate, diploma, or title conferment (e.g. 'conferred upon').\n\n"
+                "Respond ONLY with one word: 'marksheet', 'certificate', or 'transcript'.\n\n"
+                f"TEXT:\n{ocr_text[:4000]}"
+            )
+            payload = {
+                "model": "llama3.1-8b",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0
+            }
+            async with httpx.AsyncClient() as client:
+                res = await client.post(url, headers=headers, json=payload, timeout=30)
+                content = res.json()["choices"][0]["message"]["content"].lower().strip()
+                # Expanded marksheet mapping for precision
+                marksheet_keys = ["marksheet", "evaluation", "statement of marks", "grade card", "memo of marks", "result"]
+                if any(w in content for w in marksheet_keys):
+                    return "marksheet"
+                if "certificate" in content:
+                    return "certificate"
+                if "transcript" in content:
+                    return "transcript"
+                return "unknown"
+        except Exception as e:
+            logger.error(f"Document classification failed: {e}")
+            return "unknown"
+
+    @staticmethod
     async def extract_with_ai(image_data, ocr_text: str):
-        """Handles the AI generation logic"""
+        """Handles the marksheet extraction logic"""
         primary_image_bytes = image_data[0] if isinstance(image_data, list) else image_data
         base64_img = ProcessingService.encode_image(primary_image_bytes)
         
         prompt = f"""
-You are an expert VERBATIM marksheet parser. Extract ALL details from the provided OCR text and image with 100% character-level precision.
-STRICT RULE: Do not correct spelling, do not format dates, do not normalize case, and do not truncate or shorten words. Extract text EXACTLY as it appears.
-The document may contain trilingual text (English, Gujarati, Hindi). Extract exactly as visible.
-
-#### COLUMN MAPPING RULE ####
-A typical row looks like: [SR NO] [COURSE CATEGORY] [COURSE CODE] [TITLE] [CREDIT HOURS] [GRADE POINTS] [CREDIT POINTS]
-Example: "1 ALLIED ABM 517 AGRICULTURAL MARKETING MANAGEMENT 2 8.8 17.6"
-- "code": "ABM 517"
-- "title": "AGRICULTURAL MARKETING MANAGEMENT"
-- "credit_points": "17.6" (This is the total Credit Points. Always use the last value.)
-- "grade": "8.8" (This is the Grade Points. Always use this value.)
-- DO NOT use the middle number (2) which is the credit hours.
+You are an expert academic record parser. Extract details from the provided OCR text and image.
+STRICT RULE: Format the output as JSON.
 
 OCR TEXT:
 {ocr_text}
@@ -240,42 +319,36 @@ JSON FORMAT:
     {{
       "code": "Code", 
       "title": "Subject Title", 
-      "credit_points": "Total Credit Points ONLY", 
+      "credit_points": "Total Credit Points ONLY"
     }}
   ]
 }}
 Return ONLY the JSON.
 """
 
-        # 1. Try Cerebras First
         if CEREBRAS_API_KEY:
-            logger.info("Attempting primary extraction with Cerebras")
             cerebras_result = await ProcessingService.generate_with_cerebras(prompt)
             if cerebras_result:
                 return cerebras_result
 
-        # 2. Try Gemini (Async Client)
         if GEMINI_API_KEY:
             try:
                 from google import genai
                 from google.genai import types
                 client = genai.Client(api_key=GEMINI_API_KEY)
                 
-                # Convert bytes to PIL for Gemini
                 def bytes_to_pil(b_list):
                     if isinstance(b_list, list):
                         return [Image.open(io.BytesIO(b)) for b in b_list]
                     return Image.open(io.BytesIO(b_list))
                 
                 pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
-                
                 contents = [prompt]
                 if isinstance(pil_images, list):
                     contents.extend(pil_images)
                 else:
                     contents.append(pil_images)
                 
-                # Use the asynchronous generation capability
                 response = await client.aio.models.generate_content(
                     model='gemini-3.1-flash-lite-preview',
                     contents=contents,
@@ -289,31 +362,133 @@ Return ONLY the JSON.
             except Exception as e:
                 logger.warning(f"Gemini Async failed: {e}")
 
-        # 3. Fallback to OpenRouter (Reasoning Models) using httpx
-        models = [
-            "nvidia/nemotron-nano-12b-v2-vl:free", 
-            "liquid/lfm-2.5-1.2b-thinking:free",
-            "google/gemma-4-31b-it:free"
-        ]
-        async with httpx.AsyncClient() as client:
-            for model in models:
-                try:
-                    logger.info(f"Attempting async extraction with fallback {model}...")
-                    payload = {
-                        "model": model,
-                        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}],
-                        "reasoning": {"enabled": True}
-                    }
-                    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-                    res = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=90)
-                    res_json = res.json()
-                    
-                    if "choices" in res_json:
-                        raw_content = res_json["choices"][0]["message"]["content"]
-                        match = re.search(r"\{.*\}", raw_content, re.DOTALL)
-                        if match:
-                            return json.loads(match.group())
-                except Exception as e:
-                    logger.warning(f"{model} failed: {e}")
-        
-        raise ValueError("AI Extraction failed across all async paths.")
+        raise ValueError("AI Extraction failed.")
+
+    @staticmethod
+    async def extract_transcript_with_ai(image_data, ocr_text: str):
+        """Specialized hierarchical extraction for Multi-page Transcripts."""
+        prompt = f"""
+You are an expert academic transcript parser. Extract ALL fields into a NESTED HIERARCHY.
+STRICT RULE: Format Year and Semester as ALL CAPS WORDS.
+
+OCR TEXT:
+{ocr_text}
+
+#### JSON STRUCTURE ####
+{{
+  "registration_no": "...",
+  "name": "...",
+  "degree": "...",
+  "admission_year": "...",
+  "completion_year": "...",
+  "ogpa": "...",
+  "result": "...",
+  "class_division": "...",
+  "years": [
+    {{
+      "year": "FOURTH YEAR",
+      "semesters": [
+        {{
+            "semester": "SEVENTH SEMESTER",
+            "gpa": "...",
+            "cgpa": "...",
+            "courses": [
+              {{ 
+                "course_number": "...", 
+                "title": "...", 
+                "credit_points": "..." 
+              }}
+            ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+Return ONLY the structured JSON.
+"""
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            def bytes_to_pil(b_list):
+                if isinstance(b_list, list):
+                    return [Image.open(io.BytesIO(b)) for b in b_list]
+                return Image.open(io.BytesIO(b_list))
+            
+            pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
+            contents = [prompt]
+            if isinstance(pil_images, list):
+                contents.extend(pil_images)
+            else:
+                contents.append(pil_images)
+            
+            response = await client.aio.models.generate_content(
+                model='gemini-3.1-flash-lite-preview',
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=TranscriptData,
+                    temperature=0.1
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            logger.warning(f"Transcript Gemini Extraction failed: {e}")
+            raise e
+
+    @staticmethod
+    async def extract_certificate_with_ai(image_data, ocr_text: str):
+        """Specialized extraction for Academic Certificates (Degrees)."""
+        prompt = f"""
+You are an expert academic certificate parser. Extract specific fields from the provided document.
+
+OCR TEXT:
+{ocr_text}
+
+#### JSON STRUCTURE ####
+{{
+  "certificate_no": "...",
+  "no": "...",
+  "university": "...",
+  "name": "...",
+  "degree": "...",
+  "ogpa": "...",
+  "year": "...",
+  "date": "...",
+  "class_division": "..."
+}}
+
+Return ONLY the structured JSON.
+"""
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            def bytes_to_pil(b_list):
+                if isinstance(b_list, list):
+                    return [Image.open(io.BytesIO(b)) for b in b_list]
+                return Image.open(io.BytesIO(b_list))
+            
+            pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
+            contents = [prompt]
+            if isinstance(pil_images, list):
+                contents.extend(pil_images)
+            else:
+                contents.append(pil_images)
+            
+            response = await client.aio.models.generate_content(
+                model='gemini-3.1-flash-lite-preview',
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=CertificateData,
+                    temperature=0.1
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            logger.error(f"Certificate AI Extraction failed: {e}")
+            raise e

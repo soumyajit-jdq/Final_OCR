@@ -134,7 +134,7 @@ def build_canonical_payload(data: dict) -> str:
     # Compact JSON: no spaces, matches JavaScript's JSON.stringify()
     return json.dumps(payload, separators=(',', ':'))
 
-def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 3):
+def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 1):
     """Converts up to max_pages of a PDF to OCR-ready images and extracts text."""
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
