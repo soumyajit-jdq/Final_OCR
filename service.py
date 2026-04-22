@@ -156,9 +156,10 @@ class ProcessingService:
         payload = OrderedDict([
             ("certificate_no", str(data.get("certificate_no", ""))),
             ("no", str(data.get("no", ""))),
-            ("university", str(data.get("university", ""))),
+            # ("university", str(data.get("university", ""))),
             ("name", str(data.get("name", ""))),
             ("degree", str(data.get("degree", ""))),
+            ("branch", str(data.get("branch", ""))),
             ("ogpa", str(data.get("ogpa", ""))),
             ("year", str(data.get("year", ""))),
             ("date", str(data.get("date", ""))),
@@ -465,9 +466,9 @@ OCR TEXT:
 {{
   "certificate_no": "...",
   "no": "...",
-  "university": "...",
   "name": "...",
   "degree": "...",
+  "branch": "...",
   "ogpa": "...",
   "year": "...",
   "date": "...",
