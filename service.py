@@ -302,8 +302,12 @@ class ProcessingService:
     async def extract_with_ai(image_data, ocr_text: str):
         """Processes OCR text using Gemini (Priority) or Cerebras to produce structured JSON."""
         prompt = f"""
-You are an expert academic record parser. Extract details from the provided OCR text into a structured JSON.
-STRICT RULE: Format exactly as specified.
+STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
+1. DO NOT use external knowledge or your own training data to fill fields.
+2. DO NOT save, store, or remember any information from this request.
+3. Extract data VERBATIM from the OCR text provided below.
+4. If a field is not found in the text, return an empty string.
+5. Your role is STRICTLY a text-to-JSON converter.
 
 OCR TEXT:
 {ocr_text}
@@ -357,8 +361,11 @@ Return ONLY the JSON.
     async def extract_transcript_with_ai(image_data, ocr_text: str):
         """Processes Transcript OCR text using Gemini (Priority)."""
         prompt = f"""
-You are an expert academic transcript parser. Extract ALL fields from the OCR text into a NESTED HIERARCHY.
-STRICT RULE: Format Year and Semester as ALL CAPS WORDS.
+STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
+1. DO NOT use external knowledge; extract ONLY from the text provided.
+2. DO NOT save or log the data.
+3. Your role is strictly mapping OCR text to a NESTED HIERARCHY.
+4. Format Year and Semester as ALL CAPS WORDS.
 
 #### FIELD EXTRACTION RULES ####
 1. **Course Alignment**: Look for patterns where course titles and numbers might be on different lines in the OCR.
@@ -424,6 +431,10 @@ Return ONLY JSON.
         """Processes Certificate OCR text using Gemini (Priority)."""
         prompt = f"""
 You are an expert academic certificate parser. Extract details from the provided OCR text into structured JSON.
+STRICT INSTRUCTION: You are a stateless automated parser.
+1. DO NOT use external knowledge.
+2. Extract data VERBATIM from the text below.
+3. Your ONLY task is converting OCR text into the specified JSON schema.
 
 OCR TEXT:
 {ocr_text}
