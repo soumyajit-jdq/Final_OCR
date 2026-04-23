@@ -46,8 +46,8 @@ async def extract_document(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 50:
-            logger.info("Sparse text detected, running async OCR")
+        if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+            logger.info("Scanned PDF or sparse text detected, running real OCR")
             ocr_text = await ProcessingService.run_ocr(ocr_source)
             
         logger.info(f"--- RAW OCR TEXT START ---\n{ocr_text}\n--- RAW OCR TEXT END ---")
@@ -56,9 +56,9 @@ async def extract_document(file: UploadFile = File()):
         doc_type = await ProcessingService.classify_document(ocr_text)
         logger.info(f"Step 2 (Classification): Identified as {doc_type}")
         
-        if doc_type != "marksheet":
-            logger.warning(f"Classification Mismatch: Expected marksheet, found {doc_type}")
-            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+        if doc_type != "marksheet" and doc_type != "unknown":
+            logger.warning(f"Classification Mismatch: Expected marksheet, found {doc_type}. Proceeding anyway.")
+            # raise HTTPException(status_code=400, detail="Please upload the correct document.")
             
         structured_dict = await ProcessingService.extract_with_ai(processing_image, ocr_text)
         
@@ -96,7 +96,7 @@ async def extract_certificate(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 50:
+        if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
             ocr_text = await ProcessingService.run_ocr(ocr_source)
 
         logger.info(f"--- RAW CERTIFICATE OCR TEXT START ---\n{ocr_text}\n--- RAW CERTIFICATE OCR TEXT END ---")
@@ -104,9 +104,9 @@ async def extract_certificate(file: UploadFile = File()):
         # 3. Classification Gate
         doc_type = await ProcessingService.classify_document(ocr_text)
         logger.info(f"Step 2 (Classification): Identified as {doc_type}")
-        if doc_type != "certificate":
-            logger.warning(f"Classification Mismatch: Expected certificate, found {doc_type}")
-            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+        if doc_type != "certificate" and doc_type != "unknown":
+            logger.warning(f"Classification Mismatch: Expected certificate, found {doc_type}. Proceeding anyway.")
+            # raise HTTPException(status_code=400, detail="Please upload the correct document.")
 
         # 4. Extraction
         structured_dict = await ProcessingService.extract_certificate_with_ai(processing_image, ocr_text)
@@ -145,8 +145,8 @@ async def extract_transcript(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 50:
-            logger.info("Sparse Transcript text detected, running full OCR")
+        if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+            logger.info("Scanned Transcript PDF detected, running full OCR")
             ocr_text = await ProcessingService.run_ocr(ocr_source)
             
         logger.info(f"--- RAW TRANSCRIPT OCR TEXT START ---\n{ocr_text}\n--- RAW TRANSCRIPT OCR TEXT END ---")
@@ -154,9 +154,9 @@ async def extract_transcript(file: UploadFile = File()):
         # 3. Classification Gate
         doc_type = await ProcessingService.classify_document(ocr_text)
         logger.info(f"Step 2 (Classification): Identified as {doc_type}")
-        if doc_type != "transcript":
-            logger.warning(f"Classification Mismatch: Expected transcript, found {doc_type}")
-            raise HTTPException(status_code=400, detail="Please upload the correct document.")
+        if doc_type != "transcript" and doc_type != "unknown":
+            logger.warning(f"Classification Mismatch: Expected transcript, found {doc_type}. Proceeding anyway.")
+            # raise HTTPException(status_code=400, detail="Please upload the correct document.")
 
         # 4. AI Hierarchical Extraction
         structured_dict = await ProcessingService.extract_transcript_with_ai(processing_image, ocr_text)

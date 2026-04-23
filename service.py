@@ -263,7 +263,23 @@ class ProcessingService:
 
     @staticmethod
     async def classify_document(ocr_text: str) -> str:
-        """Uses Cerebras (Llama) to categorize the document type."""
+        """Uses keywords first, then Cerebras (Llama) to categorize the document type."""
+        text_lower = ocr_text.lower()
+        
+        # 1. Faster, more reliable Keyword Map
+        # Check certificates first because they often mention "Transcript" or "Marks" in titles
+        certificate_triggers = ["conferred upon", "degree certificate", "passing certificate", "provisional certificate"]
+        transcript_triggers = ["official transcript", "academic record", "consolidated marks"]
+        marksheet_triggers = ["statement of marks", "grade card", "memo of marks", "evaluation report"]
+
+        if any(t in text_lower for t in certificate_triggers):
+            return "certificate"
+        if any(t in text_lower for t in transcript_triggers):
+            return "transcript"
+        if any(t in text_lower for t in marksheet_triggers):
+            return "marksheet"
+
+        # 2. Fallback to AI Classification
         if not CEREBRAS_API_KEY:
             return "unknown"
         try:
@@ -271,9 +287,9 @@ class ProcessingService:
             headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
             prompt = (
                 "Identify the document type strictly based on scope:\n"
-                "1. 'marksheet': A record for a SINGLE examination session, semester, or year (e.g. 'Statement of Marks', 'Grade Card', 'Evaluation Report').\n"
-                "2. 'transcript': A CONSOLIDATED academic record spanning the entire degree or multiple years (e.g. 'Official Transcript', 'Consolidated Marks').\n"
-                "3. 'certificate': A degree certificate, diploma, or title conferment (e.g. 'conferred upon').\n\n"
+                "1. 'marksheet': A record for a single semester/year (e.g., 'Grade Card').\n"
+                "2. 'transcript': A multi-page consolidated record of all years/semesters.\n"
+                "3. 'certificate': A single-page document conferring a degree (e.g., 'Degree Certificate').\n\n"
                 "Respond ONLY with one word: 'marksheet', 'certificate', or 'transcript'.\n\n"
                 f"TEXT:\n{ocr_text[:4000]}"
             )
@@ -285,18 +301,44 @@ class ProcessingService:
             async with httpx.AsyncClient() as client:
                 res = await client.post(url, headers=headers, json=payload, timeout=30)
                 content = res.json()["choices"][0]["message"]["content"].lower().strip()
-                # Expanded marksheet mapping for precision
-                marksheet_keys = ["marksheet", "evaluation", "statement of marks", "grade card", "memo of marks", "result"]
-                if any(w in content for w in marksheet_keys):
-                    return "marksheet"
-                if "certificate" in content:
-                    return "certificate"
-                if "transcript" in content:
-                    return "transcript"
+                logger.info(f"AI Classification Raw Result: {content}")
+                
+                if "marksheet" in content: return "marksheet"
+                if "certificate" in content: return "certificate"
+                if "transcript" in content: return "transcript"
                 return "unknown"
         except Exception as e:
             logger.error(f"Document classification failed: {e}")
             return "unknown"
+
+    @staticmethod
+    async def gemini_generate_with_retry(prompt: str, schema, retries: int = 3):
+        """Helper to call Gemini with exponential backoff on 503 errors."""
+        from google import genai
+        from google.genai import types
+        
+        model_name = 'gemini-3.1-flash-lite-preview'
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        for attempt in range(retries):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=schema,
+                        temperature=0.1
+                    )
+                )
+                return json.loads(response.text)
+            except Exception as e:
+                error_msg = str(e)
+                if ("503" in error_msg or "UNAVAILABLE" in error_msg) and attempt < retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    logger.warning(f"Gemini 503/Unavailable, retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
+                    await anyio.sleep(wait_time)
+                else:
+                    raise e
 
     @staticmethod
     async def extract_with_ai(image_data, ocr_text: str):
@@ -331,23 +373,11 @@ Return ONLY the JSON.
         # 1. Try Gemini First (LLM Extraction)
         if GEMINI_API_KEY:
             try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=GEMINI_API_KEY)
-                
-                response = await client.aio.models.generate_content(
-                    model='gemini-3.1-flash-lite-preview',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=MarkSheetData,
-                        temperature=0.1
-                    )
-                )
+                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData)
                 logger.info("Gemini Text Extraction successful.")
-                return json.loads(response.text)
+                return result
             except Exception as e:
-                logger.warning(f"Gemini Extraction failed: {e}. Falling back to Cerebras.")
+                logger.warning(f"Gemini Extraction failed after retries: {e}. Falling back to Cerebras.")
 
         # 2. Try Cerebras Fallback
         if CEREBRAS_API_KEY:
@@ -408,22 +438,11 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            
-            response = await client.aio.models.generate_content(
-                model='gemini-3.1-flash-lite-preview',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=TranscriptData,
-                    temperature=0.1
-                )
-            )
-            return json.loads(response.text)
+            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData)
         except Exception as e:
             logger.error(f"Transcript Extraction failed: {e}")
+            # Optional: Add Cerebras fallback for transcripts if needed, 
+            # though TranscriptData is very complex for Llama 3.1 8b.
             raise e
 
     @staticmethod
@@ -454,20 +473,7 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            
-            response = await client.aio.models.generate_content(
-                model='gemini-3.1-flash-lite-preview',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=CertificateData,
-                    temperature=0.1
-                )
-            )
-            return json.loads(response.text)
+            return await ProcessingService.gemini_generate_with_retry(prompt, CertificateData)
         except Exception as e:
             logger.error(f"Certificate Extraction failed: {e}")
             raise e
