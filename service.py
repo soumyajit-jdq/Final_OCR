@@ -300,96 +300,79 @@ class ProcessingService:
 
     @staticmethod
     async def extract_with_ai(image_data, ocr_text: str):
-        """Handles the marksheet extraction logic"""
-        primary_image_bytes = image_data[0] if isinstance(image_data, list) else image_data
-        base64_img = ProcessingService.encode_image(primary_image_bytes)
-        
+        """Processes OCR text using Gemini (Priority) or Cerebras to produce structured JSON."""
         prompt = f"""
-You are an expert academic record parser. Extract details from the provided OCR text and image.
-STRICT RULE: Format the output as JSON.
+You are an expert academic record parser. Extract details from the provided OCR text into a structured JSON.
+STRICT RULE: Format exactly as specified.
 
 OCR TEXT:
 {ocr_text}
 
 JSON FORMAT:
 {{
-  "registration_no": "Enrollment/Reg No",
-  "name": "Full Name",
-  "gpa": "GPA/SGPA/CGPA",
+  "registration_no": "...",
+  "name": "...",
+  "gpa": "...",
   "subjects": [
     {{
-      "code": "Code", 
-      "title": "Subject Title", 
-      "credit_points": "Total Credit Points ONLY"
+      "code": "...", 
+      "title": "...", 
+      "credit_points": "..."
     }}
   ]
 }}
 Return ONLY the JSON.
 """
 
-        if CEREBRAS_API_KEY:
-            cerebras_result = await ProcessingService.generate_with_cerebras(prompt)
-            if cerebras_result:
-                return cerebras_result
-
+        # 1. Try Gemini First (LLM Extraction)
         if GEMINI_API_KEY:
             try:
                 from google import genai
                 from google.genai import types
                 client = genai.Client(api_key=GEMINI_API_KEY)
                 
-                def bytes_to_pil(b_list):
-                    if isinstance(b_list, list):
-                        return [Image.open(io.BytesIO(b)) for b in b_list]
-                    return Image.open(io.BytesIO(b_list))
-                
-                pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
-                contents = [prompt]
-                if isinstance(pil_images, list):
-                    contents.extend(pil_images)
-                else:
-                    contents.append(pil_images)
-                
                 response = await client.aio.models.generate_content(
                     model='gemini-3.1-flash-lite-preview',
-                    contents=contents,
+                    contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=MarkSheetData,
                         temperature=0.1
                     )
                 )
+                logger.info("Gemini Text Extraction successful.")
                 return json.loads(response.text)
             except Exception as e:
-                logger.warning(f"Gemini Async failed: {e}")
+                logger.warning(f"Gemini Extraction failed: {e}. Falling back to Cerebras.")
+
+        # 2. Try Cerebras Fallback
+        if CEREBRAS_API_KEY:
+            cerebras_result = await ProcessingService.generate_with_cerebras(prompt)
+            if cerebras_result:
+                return cerebras_result
 
         raise ValueError("AI Extraction failed.")
 
     @staticmethod
     async def extract_transcript_with_ai(image_data, ocr_text: str):
-        """Specialized hierarchical extraction for Multi-page Transcripts."""
+        """Processes Transcript OCR text using Gemini (Priority)."""
         prompt = f"""
-You are an expert academic transcript parser. Extract ALL fields into a NESTED HIERARCHY.
+You are an expert academic transcript parser. Extract ALL fields from the OCR text into a NESTED HIERARCHY.
 STRICT RULE: Format Year and Semester as ALL CAPS WORDS.
 
 #### FIELD EXTRACTION RULES ####
-1. **Header Info**: Look for "Sr. No.", "Registration No.", "Name", "Faculty", "Degree", "Admission Year", "Completion Year", "Medium of instruction", and "College".
-2. **Summary Info**: Look for "Total Credit Hours", "Total Credit Points", "O.G.P.A.", "Result", "Class", and "Percentage" (usually at the end).
-3. **Course Alignment Fix**: 
-   - CRITICAL: In the OCR text, numbers often appear on a DIFFERENT line than the course title.
-   - For non-credit courses (e.g., NSS/NCC, Physical Education), the grade is often 'S' (Satisfactory). 
-   - STRICT RULE: NEVER put 'S' in "credit_points". For non-credit courses, "credit_points" MUST be '--'.
-   - Use the provided images to visually anchor every number to its correct course.
-4. **GPA/CGPA**: For each semester, extract both the "G.P.A." and the cumulative "C.G.P.A." provided at the end of the semester block.
+1. **Course Alignment**: Look for patterns where course titles and numbers might be on different lines in the OCR.
+2. **Non-Credit Courses**: For courses with grade 'S', set "credit_points" to '--'.
+3. **GPA/CGPA**: Extract both "G.P.A." and cumulative "C.G.P.A." for each semester.
 
 #### FORMATTING ####
-- "year": MUST BE "FIRST YEAR", "SECOND YEAR", "THIRD YEAR", or "FOURTH YEAR".
-- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", ..., "EIGHTH SEMESTER".
+- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
+- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
 
 OCR TEXT:
 {ocr_text}
 
-#### JSON STRUCTURE ####
+JSON STRUCTURE:
 {{
   "registration_no": "...",
   "name": "...",
@@ -401,47 +384,30 @@ OCR TEXT:
   "class_division": "...",
   "years": [
     {{
-      "year": "FOURTH YEAR",
+      "year": "...",
       "semesters": [
         {{
-            "semester": "SEVENTH SEMESTER",
+            "semester": "...",
             "gpa": "...",
             "cgpa": "...",
             "courses": [
-              {{ 
-                "course_number": "...", 
-                "title": "...", 
-                "credit_points": "..." 
-              }}
+              {{ "course_number": "...", "title": "...", "credit_points": "..." }}
             ]
         }}
       ]
     }}
   ]
 }}
-
-Return ONLY the structured JSON.
+Return ONLY JSON.
 """
         try:
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            def bytes_to_pil(b_list):
-                if isinstance(b_list, list):
-                    return [Image.open(io.BytesIO(b)) for b in b_list]
-                return Image.open(io.BytesIO(b_list))
-            
-            pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
-            contents = [prompt]
-            if isinstance(pil_images, list):
-                contents.extend(pil_images)
-            else:
-                contents.append(pil_images)
-            
             response = await client.aio.models.generate_content(
                 model='gemini-3.1-flash-lite-preview',
-                contents=contents,
+                contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=TranscriptData,
@@ -450,19 +416,19 @@ Return ONLY the structured JSON.
             )
             return json.loads(response.text)
         except Exception as e:
-            logger.warning(f"Transcript Gemini Extraction failed: {e}")
+            logger.error(f"Transcript Extraction failed: {e}")
             raise e
 
     @staticmethod
     async def extract_certificate_with_ai(image_data, ocr_text: str):
-        """Specialized extraction for Academic Certificates (Degrees)."""
+        """Processes Certificate OCR text using Gemini (Priority)."""
         prompt = f"""
-You are an expert academic certificate parser. Extract specific fields from the provided document.
+You are an expert academic certificate parser. Extract details from the provided OCR text into structured JSON.
 
 OCR TEXT:
 {ocr_text}
 
-#### JSON STRUCTURE ####
+JSON STRUCTURE:
 {{
   "certificate_no": "...",
   "no": "...",
@@ -474,29 +440,16 @@ OCR TEXT:
   "date": "...",
   "class_division": "..."
 }}
-
-Return ONLY the structured JSON.
+Return ONLY JSON.
 """
         try:
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            def bytes_to_pil(b_list):
-                if isinstance(b_list, list):
-                    return [Image.open(io.BytesIO(b)) for b in b_list]
-                return Image.open(io.BytesIO(b_list))
-            
-            pil_images = await anyio.to_thread.run_sync(bytes_to_pil, image_data)
-            contents = [prompt]
-            if isinstance(pil_images, list):
-                contents.extend(pil_images)
-            else:
-                contents.append(pil_images)
-            
             response = await client.aio.models.generate_content(
                 model='gemini-3.1-flash-lite-preview',
-                contents=contents,
+                contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=CertificateData,
@@ -505,5 +458,5 @@ Return ONLY the structured JSON.
             )
             return json.loads(response.text)
         except Exception as e:
-            logger.error(f"Certificate AI Extraction failed: {e}")
+            logger.error(f"Certificate Extraction failed: {e}")
             raise e
