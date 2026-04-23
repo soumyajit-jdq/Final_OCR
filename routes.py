@@ -138,8 +138,8 @@ async def extract_transcript(file: UploadFile = File()):
         processing_image = file_bytes
         
         if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
-            logger.info("Extracting data from Transcript PDF (up to 5 pages)")
-            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=5)
+            logger.info("Extracting data from Transcript PDF (up to 10 pages)")
+            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=10)
             if img_list:
                 processing_image = img_list
                 ocr_text = raw_text
