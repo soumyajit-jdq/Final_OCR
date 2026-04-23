@@ -46,9 +46,8 @@ async def extract_document(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        # Fix: If text is sparse OR looks like embedded JSON metadata, force visual OCR
-        if len(ocr_text) < 150 or ocr_text.strip().startswith("{"):
-            logger.info("Direct extraction sparse or metadata detected. Running OCR.space...")
+        if len(ocr_text) < 50:
+            logger.info("Sparse text detected, running async OCR")
             ocr_text = await ProcessingService.run_ocr(ocr_source)
             
         logger.info(f"--- RAW OCR TEXT START ---\n{ocr_text}\n--- RAW OCR TEXT END ---")
@@ -97,8 +96,7 @@ async def extract_certificate(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 150 or ocr_text.strip().startswith("{"):
-            logger.info("Forcing visual OCR for certificate accuracy...")
+        if len(ocr_text) < 50:
             ocr_text = await ProcessingService.run_ocr(ocr_source)
 
         logger.info(f"--- RAW CERTIFICATE OCR TEXT START ---\n{ocr_text}\n--- RAW CERTIFICATE OCR TEXT END ---")
@@ -147,8 +145,8 @@ async def extract_transcript(file: UploadFile = File()):
                 ocr_text = raw_text
         
         ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 150 or ocr_text.strip().startswith("{"):
-            logger.info("Direct Transcript text incomplete or metadata. Running full visual OCR...")
+        if len(ocr_text) < 50:
+            logger.info("Sparse Transcript text detected, running full OCR")
             ocr_text = await ProcessingService.run_ocr(ocr_source)
             
         logger.info(f"--- RAW TRANSCRIPT OCR TEXT START ---\n{ocr_text}\n--- RAW TRANSCRIPT OCR TEXT END ---")
