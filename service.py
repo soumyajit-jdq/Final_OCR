@@ -38,25 +38,31 @@ class ProcessingService:
         return ValidationResponse(is_valid=is_valid, instruction=msg, file_type=file_type)
 
     @staticmethod
-    async def compress_image(image_bytes: bytes, max_kb: int = 1000):
-        """Image compression is CPU bound, running in thread."""
+    async def compress_image(image_bytes: bytes, max_kb: int = 5120):
+        """High-resolution compression for OCR.space (5MB limit)."""
         def sync_compress():
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
+            
+            # If already small enough, don't touch it
             if len(image_bytes) <= max_kb * 1024:
                 return image_bytes
-            quality = 90
-            buffer = io.BytesIO()
-            while quality > 10:
+                
+            # Try to save with high quality first
+            quality = 95
+            while quality > 40:
                 buffer = io.BytesIO()
                 img.save(buffer, format="JPEG", quality=quality, optimize=True)
                 if len(buffer.getvalue()) <= max_kb * 1024:
+                    logger.info(f"Image compressed to {len(buffer.getvalue())//1024}KB at quality {quality}")
                     return buffer.getvalue()
-                quality -= 10
-            img.thumbnail((1600, 1600))
+                quality -= 5
+                
+            # If still too large, resize slightly (preserving resolution as much as possible)
+            img.thumbnail((2500, 2500))
             buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=20)
+            img.save(buffer, format="JPEG", quality=50)
             return buffer.getvalue()
             
         return await anyio.to_thread.run_sync(sync_compress)
@@ -168,8 +174,8 @@ class ProcessingService:
         return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
-    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 3):
-        """PDF processing is CPU intensive, running in thread pool."""
+    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 10):
+        """High-resolution PDF processing (300 DPI)."""
         def sync_pdf_process():
             try:
                 doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -182,7 +188,8 @@ class ProcessingService:
                 for i in range(num_pages):
                     page = doc[i]
                     all_text.append(page.get_text().strip())
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    # Matrix(4, 4) ~ 288 DPI. tobytes("jpg") handles the rest.
+                    pix = page.get_pixmap(matrix=fitz.Matrix(4, 4))
                     all_images.append(pix.tobytes("jpg"))
                 doc.close()
                 return all_images, "\n\n".join(all_text)
