@@ -38,8 +38,8 @@ class ProcessingService:
         return ValidationResponse(is_valid=is_valid, instruction=msg, file_type=file_type)
 
     @staticmethod
-    async def compress_image(image_bytes: bytes, max_kb: int = 5120):
-        """High-resolution compression for OCR.space (5MB limit)."""
+    async def compress_image(image_bytes: bytes, max_kb: int = 1000):
+        """High-resolution compression for OCR.space (1MB limit)."""
         def sync_compress():
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode in ("RGBA", "P"):
@@ -50,19 +50,21 @@ class ProcessingService:
                 return image_bytes
                 
             # Try to save with high quality first
-            quality = 95
-            while quality > 40:
+            quality = 90
+            buffer = io.BytesIO()
+            while quality > 10:
                 buffer = io.BytesIO()
                 img.save(buffer, format="JPEG", quality=quality, optimize=True)
                 if len(buffer.getvalue()) <= max_kb * 1024:
                     logger.info(f"Image compressed to {len(buffer.getvalue())//1024}KB at quality {quality}")
                     return buffer.getvalue()
-                quality -= 5
+                quality -= 10
+            img.thumbnail((1600, 1600))
                 
             # If still too large, resize slightly (preserving resolution as much as possible)
-            img.thumbnail((2500, 2500))
+            # img.thumbnail((2500, 2500))
             buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=50)
+            img.save(buffer, format="JPEG", quality=20)
             return buffer.getvalue()
             
         return await anyio.to_thread.run_sync(sync_compress)
@@ -174,7 +176,7 @@ class ProcessingService:
         return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
-    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 10):
+    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 3):
         """High-resolution PDF processing (300 DPI)."""
         def sync_pdf_process():
             try:
@@ -189,7 +191,7 @@ class ProcessingService:
                     page = doc[i]
                     all_text.append(page.get_text().strip())
                     # Matrix(4, 4) ~ 288 DPI. tobytes("jpg") handles the rest.
-                    pix = page.get_pixmap(matrix=fitz.Matrix(4, 4))
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                     all_images.append(pix.tobytes("jpg"))
                 doc.close()
                 return all_images, "\n\n".join(all_text)
