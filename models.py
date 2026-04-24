@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional
 
 class Subject(BaseModel):
@@ -33,6 +33,13 @@ class Course(BaseModel):
     course_number: str = Field(..., description="Course/Subject Number")
     title: str = Field(..., description="Course title")
     credit_points: str = Field(..., description="Total Credit Points")
+
+    @field_validator('course_number')
+    @classmethod
+    def clean_course_number(cls, v: str) -> str:
+        # Remove all middle spaces from course number (e.g. "Ag. Engg. 2.1" -> "Ag.Engg.2.1")
+        # Keeps internal structure but removes the 'taking space randomly' issue
+        return v.replace(" ", "")
 
 class SemesterData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)

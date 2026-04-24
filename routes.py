@@ -35,31 +35,33 @@ async def extract_document(file: UploadFile = File()):
             raise HTTPException(status_code=400, detail=validation.instruction)
             
         # 2. Proceed to Extraction
-        ocr_text = ""
-        processing_image = file_bytes
-        
         if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
             logger.info("Extracting data from PDF")
             img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes)
             if img_list:
                 processing_image = img_list
                 ocr_text = raw_text
-        
-        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        else:
+            processing_image = [file_bytes]
+            ocr_text = ""
+            page_results = []
+        # ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
+            ocr_text = "\n\n".join(page_results)
         if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-            logger.info("Scanned PDF or sparse text detected, running real OCR")
-            ocr_text = await ProcessingService.run_ocr(ocr_source)
-        # if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-        #     logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
-        #     page_results = []
-        #     # Loop through every extracted page image
-        #     for i, img in enumerate(processing_image):
-        #         logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
-        #         page_text = await ProcessingService.run_ocr(img)
-        #         page_results.append(page_text)
+            logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
+            page_results = []
+            # Loop through every extracted page image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
             
-        #     # Combine all pages into one full text block
-        #     ocr_text = "\n\n".join(page_results)
+            # Combine all pages into one full text block
+            ocr_text = "\n\n".join(page_results)
             
         logger.info(f"--- RAW OCR TEXT START ---\n{ocr_text}\n--- RAW OCR TEXT END ---")
             
@@ -105,23 +107,21 @@ async def extract_certificate(file: UploadFile = File()):
             if img_list:
                 processing_image = img_list
                 ocr_text = raw_text
-
-        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
-        if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-            logger.info("Scanned PDF or sparse text detected, running real OCR")
-            ocr_text = await ProcessingService.run_ocr(ocr_source)
-
+        
+        # ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
         # if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-        #     logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
-        #     page_results = []
-        #     # Loop through every extracted page image
-        #     for i, img in enumerate(processing_image):
-        #         logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
-        #         page_text = await ProcessingService.run_ocr(img)
-        #         page_results.append(page_text)
+        #     ocr_text = await ProcessingService.run_ocr(ocr_source)
+        if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+            logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
+            page_results = []
+            # Loop through every extracted page image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
             
-        #     # Combine all pages into one full text block
-        #     ocr_text = "\n\n".join(page_results)
+            # Combine all pages into one full text block
+            ocr_text = "\n\n".join(page_results)
 
         logger.info(f"--- RAW CERTIFICATE OCR TEXT START ---\n{ocr_text}\n--- RAW CERTIFICATE OCR TEXT END ---")
 

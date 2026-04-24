@@ -415,6 +415,14 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 - "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
 - "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
 
+#### CHARACTER ACCURACY RULES ####
+1. ROMAN NUMERALS: OCR often misreads Roman numeral "I" as "1", "l", or "L" and "II" as "ll". 
+   - CORRECT examples: "Field Crops-I", "Crop Physiology-I", "RAWE-I".
+   - DO NOT use "1", "l", or "L" where a Roman numeral is intended.
+2. COURSE NUMBERS: Ensure dots are present (e.g., "Agron.6.9", NOT "Agron6.9").
+3. COURSE CODES: "Pl.Phy" often misread as "PI.Phy". Use "Pl.Phy" for Plant Physiology.
+4. SPACING: Course Numbers (e.g., "Agron.1.1") MUST NOT contain internal spaces.
+
 OCR TEXT:
 {ocr_text}
 
