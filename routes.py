@@ -45,10 +45,21 @@ async def extract_document(file: UploadFile = File()):
                 processing_image = img_list
                 ocr_text = raw_text
         
-        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+        #     logger.info("Scanned PDF or sparse text detected, running real OCR")
+        #     ocr_text = await ProcessingService.run_ocr(ocr_source)
         if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-            logger.info("Scanned PDF or sparse text detected, running real OCR")
-            ocr_text = await ProcessingService.run_ocr(ocr_source)
+            logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
+            page_results = []
+            # Loop through every extracted page image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
+            
+            # Combine all pages into one full text block
+            ocr_text = "\n\n".join(page_results)
             
         logger.info(f"--- RAW OCR TEXT START ---\n{ocr_text}\n--- RAW OCR TEXT END ---")
             
@@ -95,9 +106,20 @@ async def extract_certificate(file: UploadFile = File()):
                 processing_image = img_list
                 ocr_text = raw_text
         
-        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+        #     ocr_text = await ProcessingService.run_ocr(ocr_source)
         if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-            ocr_text = await ProcessingService.run_ocr(ocr_source)
+            logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
+            page_results = []
+            # Loop through every extracted page image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
+            
+            # Combine all pages into one full text block
+            ocr_text = "\n\n".join(page_results)
 
         logger.info(f"--- RAW CERTIFICATE OCR TEXT START ---\n{ocr_text}\n--- RAW CERTIFICATE OCR TEXT END ---")
 
@@ -144,10 +166,23 @@ async def extract_transcript(file: UploadFile = File()):
                 processing_image = img_list
                 ocr_text = raw_text
         
-        ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # ocr_source = processing_image[0] if isinstance(processing_image, list) else processing_image
+        # if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
+        #     logger.info("Scanned Transcript PDF detected, running full OCR")
+        #     ocr_text = await ProcessingService.run_ocr(ocr_source)
+        # The logic now handles all pages instead of just index [0]
         if len(ocr_text) < 60 or not any(c.isalpha() for c in ocr_text):
-            logger.info("Scanned Transcript PDF detected, running full OCR")
-            ocr_text = await ProcessingService.run_ocr(ocr_source)
+            logger.info(f"Scanned PDF detected. Running OCR on ALL {len(processing_image)} pages...")
+            page_results = []
+            # Loop through every extracted page image
+            for i, img in enumerate(processing_image):
+                logger.info(f"Processing OCR for page {i+1}/{len(processing_image)}...")
+                page_text = await ProcessingService.run_ocr(img)
+                page_results.append(page_text)
+            
+            # Combine all pages into one full text block
+            ocr_text = "\n\n".join(page_results)
+
             
         logger.info(f"--- RAW TRANSCRIPT OCR TEXT START ---\n{ocr_text}\n--- RAW TRANSCRIPT OCR TEXT END ---")
             
