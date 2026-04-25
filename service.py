@@ -360,6 +360,10 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 4. If a field is not found in the text, return an empty string.
 5. Your role is STRICTLY a text-to-JSON converter.
 
+#### EXTRACTION RULES ####
+- **Non-Credit Courses**: If a course is indicated as non-credit or has no numeric credit points (e.g., PGS 503), set "credit_points" to '---'.
+- **Avoid NaN**: NEVER use the string 'NaN' for any field. Use '---' for missing or non-numeric points.
+
 OCR TEXT:
 {ocr_text}
 
@@ -408,8 +412,9 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 
 #### FIELD EXTRACTION RULES ####
 1. **Course Alignment**: Look for patterns where course titles and numbers might be on different lines in the OCR.
-2. **Non-Credit Courses**: For courses with grade 'S', set "credit_points" to '--'.
-3. **GPA/CGPA**: Extract both "G.P.A." and cumulative "C.G.P.A." for each semester.
+2. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points, set "credit_points" to '---'.
+3. **Avoid NaN**: NEVER use the string 'NaN' for any field. Use '---' for missing or non-numeric points.
+4. **GPA/CGPA**: Extract both "G.P.A." and cumulative "C.G.P.A." for each semester.
 
 #### FORMATTING ####
 - "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
@@ -466,11 +471,15 @@ Return ONLY JSON.
     async def extract_certificate_with_ai(image_data, ocr_text: str):
         """Processes Certificate OCR text using Gemini (Priority)."""
         prompt = f"""
-You are an expert academic certificate parser. Extract details from the provided OCR text into structured JSON.
-STRICT INSTRUCTION: You are a stateless automated parser.
+STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
 1. DO NOT use external knowledge.
 2. Extract data VERBATIM from the text below.
 3. Your ONLY task is converting OCR text into the specified JSON schema.
+4. If a field is not found, return an empty string. NEVER use 'NaN'.
+
+#### EXTRACTION RULES ####
+- **Missing Numeric Fields**: If OGPA or other numeric fields are missing, use '---'.
+- **Avoid NaN**: NEVER use the string 'NaN' for any field.
 
 OCR TEXT:
 {ocr_text}
