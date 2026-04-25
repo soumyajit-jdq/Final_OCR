@@ -479,6 +479,7 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 
 #### EXTRACTION RULES ####
 - **Missing Numeric Fields**: If OGPA or other numeric fields are missing, use '---'.
+- **OGPA Formatting**: Extract ONLY the numeric value (e.g., '8.12'). DO NOT include the scale or any suffix like ' / 10.00'.
 - **Avoid NaN**: NEVER use the string 'NaN' for any field.
 
 OCR TEXT:
@@ -499,7 +500,11 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            return await ProcessingService.gemini_generate_with_retry(prompt, CertificateData)
+            result = await ProcessingService.gemini_generate_with_retry(prompt, CertificateData)
+            if result.get("ogpa"):
+                # Clean up OGPA to remove any scale like "/ 10.00"
+                result["ogpa"] = str(result["ogpa"]).split('/')[0].strip()
+            return result
         except Exception as e:
             logger.error(f"Certificate Extraction failed: {e}")
             raise e
