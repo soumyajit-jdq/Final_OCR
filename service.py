@@ -420,13 +420,24 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 - "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
 - "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
 
-#### CHARACTER ACCURACY RULES ####
-1. ROMAN NUMERALS: OCR often misreads Roman numeral "I" as "1", "l", or "L" and "II" as "ll". 
-   - CORRECT examples: "Field Crops-I", "Crop Physiology-I", "RAWE-I".
-   - DO NOT use "1", "l", or "L" where a Roman numeral is intended.
-2. COURSE NUMBERS: Ensure dots are present (e.g., "Agron.6.9", NOT "Agron6.9").
-3. COURSE CODES: "Pl.Phy" often misread as "PI.Phy". Use "Pl.Phy" for Plant Physiology.
-4. SPACING: Course Numbers (e.g., "Agron.1.1") MUST NOT contain internal spaces.
+#### CHARACTER ACCURACY RULES & SELF-CORRECTION ####
+1. ROMAN NUMERALS: OCR frequently misreads Roman numerals in titles and codes.
+   - "I" is misread as "1", "l", "L", or "|". (e.g., "Field Crops-1" -> "Field Crops-I", "RAWE-L" -> "RAWE-I").
+   - "II" is misread as "ll", "11", "IT", or "IT". (e.g., "Field Crops-IT" -> "Field Crops-II", "RAWE-IT" -> "RAWE-II").
+   - ALWAYS fix these to "I" or "II" based on context.
+   - NOTE: If the Roman numeral "I" appears in a dot-separated number like "Ag.Chem.I.1", it is almost certainly the number "1". (e.g., "Ag.Chem.I.1" -> "Ag.Chem.1.1", "P.E.I.1" -> "P.E.1.1").
+2. COURSE CODES & PREFIXES:
+   - "LPM" (Livestock Production) is often misread as "IPM" or "L.PM". Correct to "LPM".
+   - "Ag.Econ" misread as "Ag. Fcon" or "Ag. Fcon". Correct to "Ag.Econ".
+   - "Ag.Ento" misread as "Ag. Fnto" or "Ag. Fnto". Correct to "Ag.Ento".
+   - "Ag.Extn" misread as "Ag.Extu". Correct to "Ag.Extn".
+   - "Agron." misread as "Agron". Ensure the dot is present.
+   - "Pl.Phy" misread as "PI.Phy". Use "Pl.Phy" (Plant Physiology).
+3. WORD CORRECTIONS:
+   - "ests" -> "Pests", "Managemen" -> "Management", "Phy" -> "Physiology" (if abbreviated).
+   - "Envs.6.]" -> "Envs.6.1", "OVERATI." -> "OVERALL".
+4. SPACING: Remove all spaces within course numbers. "Agron. 1.1" -> "Agron.1.1", "Ag. Ento. 3.1" -> "Ag.Ento.3.1".
+5. CREDIT POINTS: Extract the numeric value precisely. If you see a number like "222" or "142" where a decimal is missing, use your judgment based on surrounding rows (e.g., "22.2", "14.2").
 
 OCR TEXT:
 {ocr_text}
