@@ -321,18 +321,25 @@ class ProcessingService:
             return "unknown"
 
     @staticmethod
-    async def gemini_generate_with_retry(prompt: str, schema, retries: int = 3):
-        """Helper to call Gemini with exponential backoff on 503 errors."""
+    async def gemini_generate_with_retry(prompt: str, schema, images: list = None, retries: int = 3):
+        """Helper to call Gemini with exponential backoff on 503 errors. Supports Multi-modal (Vision)."""
         from google import genai
         from google.genai import types
         
         model_name = 'gemini-3.1-flash-lite-preview'
         client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        # Prepare contents (text + optional images)
+        contents = [prompt]
+        if images:
+            for img_bytes in images:
+                contents.append(types.Part.from_bytes(data=img_bytes, mime_type='image/jpeg'))
+
         for attempt in range(retries):
             try:
                 response = await client.aio.models.generate_content(
                     model=model_name,
-                    contents=prompt,
+                    contents=contents,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=schema,
@@ -383,11 +390,15 @@ JSON FORMAT:
 Return ONLY the JSON.
 """
 
-        # 1. Try Gemini First (LLM Extraction)
+        # 1. Try Gemini First (LLM + Vision)
         if GEMINI_API_KEY:
             try:
-                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData)
-                logger.info("Gemini Text Extraction successful.")
+                # If OCR failed or is poor quality, use Vision
+                use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 100
+                images = image_data if use_vision else None
+
+                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=images)
+                logger.info(f"Gemini Extraction successful (Vision: {use_vision}).")
                 return result
             except Exception as e:
                 logger.warning(f"Gemini Extraction failed after retries: {e}. Falling back to Cerebras.")
@@ -411,33 +422,30 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 4. Format Year and Semester as ALL CAPS WORDS.
 
 #### FIELD EXTRACTION RULES ####
-1. **Course Alignment**: Look for patterns where course titles and numbers might be on different lines in the OCR.
-2. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points, set "credit_points" to '---'.
-3. **Avoid NaN**: NEVER use the string 'NaN' for any field. Use '---' for missing or non-numeric points.
-4. **GPA/CGPA**: Extract both "G.P.A." and cumulative "C.G.P.A." for each semester.
+1. **Header & Summary**: Extract `registration_no`, `name`, `degree`, `admission_year`, `completion_year`, `ogpa`, `result`, and `class_division` (Abstract section).
+2. **Vertical Row-Shifting (CRITICAL)**: 
+   - Some semesters use "One-Row Up Offset". 
+   - **Detection**: Look at the line containing the Semester Title (e.g., "THIRD SEMESTER 7.8").
+     - If the Semester Title line ends with a number (e.g., "7.8" or "7.1"), an **OFFSET** is active for that entire semester.
+     - **Mapping Rule**: The credit points for Course N are found on the line of Course N-1 (or the Semester Header for the first course).
+     - Example (3rd Sem): Header has "7.8" -> `Agron.3.4` gets `7.8`. `Agron.3.4` line has "15.2" -> `Agron.3.5` gets `15.2`.
+   - If no number is in the header, use "Same-Line Alignment".
+3. **Orphan Lines**: If a course has no numeric points on its own line or the previous line, look at the nearest orphan line (line with only numbers).
+4. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points (and no shifted points), set "credit_points" to '---'.
+5. **GPA/CGPA**: Extract "G.P.A." and "C.G.P.A." for each semester.
 
 #### FORMATTING ####
 - "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
 - "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
+- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
+- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
 
-#### CHARACTER ACCURACY RULES & SELF-CORRECTION ####
-1. ROMAN NUMERALS: OCR frequently misreads Roman numerals in titles and codes.
-   - "I" is misread as "1", "l", "L", or "|". (e.g., "Field Crops-1" -> "Field Crops-I", "RAWE-L" -> "RAWE-I").
-   - "II" is misread as "ll", "11", "IT", or "IT". (e.g., "Field Crops-IT" -> "Field Crops-II", "RAWE-IT" -> "RAWE-II").
-   - ALWAYS fix these to "I" or "II" based on context.
-   - NOTE: If the Roman numeral "I" appears in a dot-separated number like "Ag.Chem.I.1", it is almost certainly the number "1". (e.g., "Ag.Chem.I.1" -> "Ag.Chem.1.1", "P.E.I.1" -> "P.E.1.1").
-2. COURSE CODES & PREFIXES:
-   - "LPM" (Livestock Production) is often misread as "IPM" or "L.PM". Correct to "LPM".
-   - "Ag.Econ" misread as "Ag. Fcon" or "Ag. Fcon". Correct to "Ag.Econ".
-   - "Ag.Ento" misread as "Ag. Fnto" or "Ag. Fnto". Correct to "Ag.Ento".
-   - "Ag.Extn" misread as "Ag.Extu". Correct to "Ag.Extn".
-   - "Agron." misread as "Agron". Ensure the dot is present.
-   - "Pl.Phy" misread as "PI.Phy". Use "Pl.Phy" (Plant Physiology).
-3. WORD CORRECTIONS:
-   - "ests" -> "Pests", "Managemen" -> "Management", "Phy" -> "Physiology" (if abbreviated).
-   - "Envs.6.]" -> "Envs.6.1", "OVERATI." -> "OVERALL".
-4. SPACING: Remove all spaces within course numbers. "Agron. 1.1" -> "Agron.1.1", "Ag. Ento. 3.1" -> "Ag.Ento.3.1".
-5. CREDIT POINTS: Extract the numeric value precisely. If you see a number like "222" or "142" where a decimal is missing, use your judgment based on surrounding rows (e.g., "22.2", "14.2").
+#### CHARACTER ACCURACY & TITLES ####
+1. ROMAN NUMERALS: OCR misreads "1", "l", "|" as "I" and "ll", "11", "IT" as "II".
+   - **ALWAYS** convert numerical suffixes to Roman: "Practical Crop Production-1" -> "Practical Crop Production-I", "Field Crops-ll" -> "Field Crops-II", "RAWE-l" -> "RAWE-I".
+   - For `Pl.Phy.3.1`, ensure the title is "Crop Physiology - I".
+2. COURSE CODES: Remove all spaces: "Agron. 1.1" -> "Agron.1.1". Correct prefixes: "LPM", "Ag.Econ", "Ag.Ento", "Pl.Phy", "Ag.Extn".
+3. VERBATIM TITLES: Keep "Systamatics" exactly as spelled.
 
 OCR TEXT:
 {ocr_text}
@@ -471,11 +479,13 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData)
+            # If OCR failed or is poor quality, use Vision
+            use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 200
+            images = image_data if use_vision else None
+
+            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=images)
         except Exception as e:
             logger.error(f"Transcript Extraction failed: {e}")
-            # Optional: Add Cerebras fallback for transcripts if needed, 
-            # though TranscriptData is very complex for Llama 3.1 8b.
             raise e
 
     @staticmethod
@@ -511,7 +521,13 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            result = await ProcessingService.gemini_generate_with_retry(prompt, CertificateData)
+            # If OCR failed or is poor quality, use Vision
+            # (Certificates are usually 1 page, image_data could be bytes or list)
+            use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 50
+            images = image_data if isinstance(image_data, list) else [image_data]
+            images = images if use_vision else None
+
+            result = await ProcessingService.gemini_generate_with_retry(prompt, CertificateData, images=images)
             if result.get("ogpa"):
                 # Clean up OGPA to remove any scale like "/ 10.00"
                 result["ogpa"] = str(result["ogpa"]).split('/')[0].strip()
