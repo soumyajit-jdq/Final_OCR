@@ -3,130 +3,15 @@
     "filename": "33_VER_MBA AB 1ST SEM_merged.pdf",
     "data": [
       {
-        "type": "MARKSHEET",
-        "content": {
-          "registration_no": "2072116024",
-          "name": "PATEL RITESHKUMAR GIRISHBHAI",
-          "gpa": "7.03",
-          "subjects": [
-            {
-              "code": "ABM 501",
-              "title": "PRINCIPLES OF MANAGEMENT AND ORGANIZATIONAL BEHAVIOUR",
-              "credit_points": "20.7"
-            },
-            {
-              "code": "ABM 503",
-              "title": "MANAGERIAL ECONOMICS",
-              "credit_points": "18.6"
-            },
-            {
-              "code": "ABM 504",
-              "title": "MANAGERIAL ACCOUNTING AND CONTROL",
-              "credit_points": "13.6"
-            },
-            {
-              "code": "ABM 505",
-              "title": "COMMUNICATION FOR MANAGEMENT & BUSINESS",
-              "credit_points": "14.6"
-            },
-            {
-              "code": "ABM 508",
-              "title": "HUMAN RESOURCE MANAGEMENT",
-              "credit_points": "14.2"
-            },
-            {
-              "code": "ABM 510",
-              "title": "PRODUCTION AND OPERATIONS MANAGEMENT",
-              "credit_points": "15.0"
-            },
-            {
-              "code": "ABM 513",
-              "title": "COMPUTERS FOR MANAGERS",
-              "credit_points": "12.8"
-            },
-            {
-              "code": "ABM 515",
-              "title": "OPERATIONS RESEARCH",
-              "credit_points": "12.2"
-            },
-            {
-              "code": "PGS 501",
-              "title": "LIBRARY & INFORMATION SERVICES @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 502",
-              "title": "TECHNICAL WRITING & COMMU. SKILLS @",
-              "credit_points": "---"
-            },
-            {
-              "code": "ABM 502",
-              "title": "AGRIBUSINESS ENVIRONMENT & POLICY",
-              "credit_points": "14.2"
-            },
-            {
-              "code": "ABM 506",
-              "title": "BUSINESS LAWS AND ETHICS",
-              "credit_points": "14.0"
-            },
-            {
-              "code": "ABM 507",
-              "title": "MARKETING MANAGEMENT",
-              "credit_points": "21.3"
-            },
-            {
-              "code": "ABM 509",
-              "title": "FINANCIAL MANAGEMENT",
-              "credit_points": "16.2"
-            },
-            {
-              "code": "ABM 511",
-              "title": "RESEARCH METHODOLOGY IN BUSINESS MANAGEMENT",
-              "credit_points": "21.3"
-            },
-            {
-              "code": "ABM 512",
-              "title": "PROJECT MANAGEMENT AND ENTREPRENEUSHIP DEVELOPMENT",
-              "credit_points": "14.2"
-            },
-            {
-              "code": "ABM 591",
-              "title": "MASTER'S SEMINAR",
-              "credit_points": "7.7"
-            },
-            {
-              "code": "ABM 514",
-              "title": "MANAGEMENT INFORMATION SYSTEM",
-              "credit_points": "15.6"
-            },
-            {
-              "code": "ABM 595",
-              "title": "SUMMER TRAINING/INDUSTRIAL ATTACHMENT @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 503",
-              "title": "INTELLECTUAL PROPERTY & ITS MANAGEMENT IN AGRICULTURE @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 504",
-              "title": "AGRI. RES., RES. ETHICS & RURAL DEVELOPMENT PROG. @",
-              "credit_points": "---"
-            }
-          ]
-        }
-      },
-      {
         "type": "TRANSCRIPT",
         "content": {
           "registration_no": "2072116024",
           "name": "PATEL RITESHKUMAR GIRISHBHAI",
-          "degree": "M.B.A. (AB)",
-          "admission_year": null,
-          "completion_year": null,
-          "ogpa": "7.00",
-          "result": null,
+          "degree": "M.B.A. in AB",
+          "admission_year": "2016-2017",
+          "completion_year": "",
+          "ogpa": "6.76",
+          "result": "",
           "class_division": "First Class",
           "years": [
             {
@@ -138,69 +23,89 @@
                   "cgpa": "6.76",
                   "courses": [
                     {
-                      "course_number": "ABM.501",
-                      "title": "Principles of Management and Organizational Behaviour",
-                      "credit_points": "20.7"
+                      "course_number": "ABM.514",
+                      "title": "Management Information System",
+                      "credit_points": "15.6"
                     },
                     {
-                      "course_number": "ABM.502",
-                      "title": "Agribusiness Environment & Policy",
-                      "credit_points": "14.2"
+                      "course_number": "ABM.515",
+                      "title": "Operations Research",
+                      "credit_points": "12.2"
                     },
                     {
-                      "course_number": "ABM.503",
-                      "title": "Managerial Economics",
-                      "credit_points": "18.6"
+                      "course_number": "ABM.517",
+                      "title": "Agricultural Marketing Management",
+                      "credit_points": "13.0"
                     },
                     {
-                      "course_number": "ABM.504",
-                      "title": "Managerial Accounting and Control",
-                      "credit_points": "13.6"
+                      "course_number": "ABM.521",
+                      "title": "Farm Business Management",
+                      "credit_points": "12.8"
                     },
                     {
-                      "course_number": "ABM.505",
-                      "title": "Communication for Management & Business",
-                      "credit_points": "14.6"
+                      "course_number": "ABM.526",
+                      "title": "International Trade & Sustainability Governance",
+                      "credit_points": "14.4"
                     },
                     {
-                      "course_number": "ABM.506",
-                      "title": "Business Laws and Ethics",
+                      "course_number": "ABM.528",
+                      "title": "Agribusiness Financial Management",
+                      "credit_points": "12.8"
+                    },
+                    {
+                      "course_number": "ABM.530",
+                      "title": "Management of Agricultural Input Marketing",
                       "credit_points": "14.0"
                     },
                     {
-                      "course_number": "ABM.507",
-                      "title": "Marketing Management",
-                      "credit_points": "21.3"
+                      "course_number": "ABM.532",
+                      "title": "Agri-supply Chain Management",
+                      "credit_points": "16.0"
                     },
                     {
-                      "course_number": "ABM.508",
-                      "title": "Human Resource Management",
-                      "credit_points": "14.2"
+                      "course_number": "ABM.537",
+                      "title": "Commodity Future Markets and Derivatives",
+                      "credit_points": "14.0"
                     },
                     {
-                      "course_number": "ABM.509",
-                      "title": "Financial Management",
-                      "credit_points": "16.2"
+                      "course_number": "ABM.591",
+                      "title": "Master's Seminar",
+                      "credit_points": "7.7"
                     },
                     {
-                      "course_number": "ABM.510",
-                      "title": "Production and Operations Management",
-                      "credit_points": "15.0"
+                      "course_number": "ABM.599",
+                      "title": "Project Work",
+                      "credit_points": "72.0"
                     },
                     {
-                      "course_number": "ABM.511",
-                      "title": "Research Methodology in Business Management",
-                      "credit_points": "21.3"
+                      "course_number": "ABM.595",
+                      "title": "Summer Training / Industrial Attachment",
+                      "credit_points": "---"
                     },
                     {
-                      "course_number": "ABM.512",
-                      "title": "Project Management and Entrepreneurship Development",
-                      "credit_points": "14.2"
+                      "course_number": "PGS.501",
+                      "title": "Library & Information Services",
+                      "credit_points": "---"
                     },
                     {
-                      "course_number": "ABM.513",
-                      "title": "Computers for Managers",
-                      "credit_points": "12.8"
+                      "course_number": "PGS.502",
+                      "title": "Technical Writing & Communications Skills",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "PGS.503",
+                      "title": "Intellectual Property & Its Management in Agriculture",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "PGS.504",
+                      "title": "Agricultural Research, Research Ethics & Rural Development Programmes",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "PGS.505",
+                      "title": "Disaster Management",
+                      "credit_points": "---"
                     }
                   ]
                 },
@@ -208,7 +113,63 @@
                   "semester": "SECOND SEMESTER",
                   "gpa": "7.32",
                   "cgpa": "7.03",
-                  "courses": []
+                  "courses": [
+                    {
+                      "course_number": "ABM502",
+                      "title": "AGRIBUSINESS ENVIRONMENT & POLICY",
+                      "credit_points": "14.2"
+                    },
+                    {
+                      "course_number": "ABM506",
+                      "title": "BUSINESS LAWS AND ETHICS",
+                      "credit_points": "14.0"
+                    },
+                    {
+                      "course_number": "ABM507",
+                      "title": "MARKETING MANAGEMENT",
+                      "credit_points": "21.3"
+                    },
+                    {
+                      "course_number": "ABM509",
+                      "title": "FINANCIAL MANAGEMENT",
+                      "credit_points": "16.2"
+                    },
+                    {
+                      "course_number": "ABM511",
+                      "title": "RESEARCH METHODOLOGY IN BUSINESS MANAGEMENT",
+                      "credit_points": "21.3"
+                    },
+                    {
+                      "course_number": "ABM512",
+                      "title": "PROJECT MANAGEMENT AND ENTREPRENEURSHIP DEVELOPMENT",
+                      "credit_points": "14.2"
+                    },
+                    {
+                      "course_number": "ABM591",
+                      "title": "MASTER'S SEMINAR",
+                      "credit_points": "7.7"
+                    },
+                    {
+                      "course_number": "ABM514",
+                      "title": "MANAGEMENT INFORMATION SYSTEM",
+                      "credit_points": "15.6"
+                    },
+                    {
+                      "course_number": "ABM595",
+                      "title": "SUMMER TRAINING/INDUSTRIAL ATTACHMENT @",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "PGS503",
+                      "title": "INTELLECTUAL PROPERTY & ITS MANAGEMENT IN AGRICULTURE @",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "PGS504",
+                      "title": "AGRI. RES. ETHICS & RURAL DEVELOPMENT PROG. @",
+                      "credit_points": "---"
+                    }
+                  ]
                 }
               ]
             },
@@ -221,44 +182,56 @@
                   "cgpa": "7.00",
                   "courses": [
                     {
-                      "course_number": "ABM517",
+                      "course_number": "ABM 517",
                       "title": "AGRICULTURAL MARKETING MANAGEMENT",
-                      "credit_points": "13.0"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM521",
+                      "course_number": "ABM 521",
                       "title": "FARM BUSINESS MANAGEMENT",
-                      "credit_points": "12.8"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM526",
+                      "course_number": "ABM 526",
                       "title": "INTERNATIONAL TRADE & SUSTAINABILITY GOVERNANCE",
-                      "credit_points": "14.4"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM528",
+                      "course_number": "ABM 528",
                       "title": "AGRIBUSINESS FINANCIAL MANAGEMENT",
-                      "credit_points": "12.8"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM530",
+                      "course_number": "ABM 530",
                       "title": "MANAGEMENT OF AGRICULTURAL INPUT MARKETING",
-                      "credit_points": "14.0"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM532",
+                      "course_number": "ABM 532",
                       "title": "AGRI-SUPPLY CHAIN MANAGEMENT",
-                      "credit_points": "16.0"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "ABM537",
+                      "course_number": "ABM 537",
                       "title": "COMMODITY FUTURE MARKETS AND DERIVATIVES",
-                      "credit_points": "14.0"
+                      "credit_points": "2"
                     },
                     {
-                      "course_number": "PGS505",
+                      "course_number": "PGS 505",
                       "title": "DISASTER MANAGEMENT @",
                       "credit_points": "---"
+                    }
+                  ]
+                },
+                {
+                  "semester": "FOURTH SEMESTER",
+                  "gpa": "7.20",
+                  "cgpa": "7.04",
+                  "courses": [
+                    {
+                      "course_number": "ABM 599",
+                      "title": "PROJECT",
+                      "credit_points": "72.0"
                     }
                   ]
                 }
@@ -308,14 +281,14 @@
       {
         "type": "TRANSCRIPT",
         "content": {
-          "registration_no": "null",
-          "name": "null",
-          "degree": "null",
-          "admission_year": "null",
-          "completion_year": "null",
-          "ogpa": "null",
-          "result": "null",
-          "class_division": "null",
+          "registration_no": "",
+          "name": "",
+          "degree": "",
+          "admission_year": "",
+          "completion_year": "",
+          "ogpa": "",
+          "result": "",
+          "class_division": "",
           "years": []
         }
       }
@@ -332,9 +305,9 @@
           "degree": "B. Sc. (Hons.)Agri.",
           "admission_year": "2012-2013",
           "completion_year": "2015-2016",
-          "ogpa": "7.91",
-          "result": null,
-          "class_division": "First Class",
+          "ogpa": "7.56",
+          "result": "",
+          "class_division": "First Class with Distinction",
           "years": [
             {
               "year": "FIRST YEAR",
@@ -583,68 +556,200 @@
                   ]
                 }
               ]
+            },
+            {
+              "year": "THIRD YEAR",
+              "semesters": [
+                {
+                  "semester": "FIFTH SEMESTER",
+                  "gpa": "7.37",
+                  "cgpa": "7.53",
+                  "courses": [
+                    {
+                      "course_number": "Agron.5.7",
+                      "title": "Water Management Including Micro Irrigation",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Ag.Ento.5.3",
+                      "title": "Pests of Field Crops & Stored Grain & Their Management.",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Hort.5.4",
+                      "title": "Post Harvest. Management & Value Addition of Fruits and Vegetables",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "LPM.5.2",
+                      "title": "Dairy Cattle and Buffalo Production & Management",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Pl.Path.5.3",
+                      "title": "Diseases of Field Crops and Their Management",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "PBG.5.5",
+                      "title": "Principles of Seed Technology",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Ag.Econ.5.4",
+                      "title": "Fundamentals of Agril. Business Management (Including Product Development, Appraisal & Monitoring)",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Engg.5.3",
+                      "title": "Protected Cultivation and Post Harvest Technology",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Extn.5.3",
+                      "title": "Extension Methodologies for Transfer of Agricultural Technology",
+                      "credit_points": "2"
+                    }
+                  ]
+                },
+                {
+                  "semester": "SIXTH SEMESTER",
+                  "gpa": "7.54",
+                  "cgpa": "7.53",
+                  "courses": [
+                    {
+                      "course_number": "Pl.Path.6.4",
+                      "title": "Introductory Nematology",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Extn.6.4",
+                      "title": "Entrepreneurship Development",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Envs.6.1",
+                      "title": "Environmental Science",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Engg.6.4",
+                      "title": "Renewable Energy",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Agron.6.8",
+                      "title": "Organic Farming",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Agron.6.9",
+                      "title": "Farming Systems and Sustainable Agriculture",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Chem.6.3",
+                      "title": "Manures, Fertilizers and Agrochemicals",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "PBG.6.6",
+                      "title": "Principles of Plant Biotechnology",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Pl.Path.6.5",
+                      "title": "Diseases of Horticultural Crops and Their Management",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Ag.Econ.6.5",
+                      "title": "Production Economics and Farm Management",
+                      "credit_points": "2"
+                    },
+                    {
+                      "course_number": "Ag.Ento.6.4",
+                      "title": "Pests of Horticultural Crops and Their Management",
+                      "credit_points": "2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "year": "FOURTH YEAR",
+              "semesters": [
+                {
+                  "semester": "SEVENTH SEMESTER",
+                  "gpa": "8.00",
+                  "cgpa": "7.54",
+                  "courses": [
+                    {
+                      "course_number": "RAWE-I",
+                      "title": "Rural Agricultural Work Experience-I",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "RAWE-II",
+                      "title": "Rural Agricultural Work Experience-II (Non-credit Course)",
+                      "credit_points": "---"
+                    }
+                  ]
+                },
+                {
+                  "semester": "EIGHTH SEMESTER",
+                  "gpa": "7.66",
+                  "cgpa": "7.56",
+                  "courses": [
+                    {
+                      "course_number": "Hort.8.6",
+                      "title": "Commercial Vegetable Production",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Hort.8.7",
+                      "title": "Commercial Floriculture",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Hort.8.8",
+                      "title": "Commercial Fruit Production",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Hort.8.9",
+                      "title": "Nursery Management of Horticultural Crops",
+                      "credit_points": "4"
+                    },
+                    {
+                      "course_number": "Hort.8.10",
+                      "title": "Protected Cultivation of Horticultural Crops",
+                      "credit_points": "3"
+                    },
+                    {
+                      "course_number": "Ag.Pros.8.1",
+                      "title": "Unit operation for quality value addition processing and development of new products",
+                      "credit_points": "4"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
       },
       {
-        "type": "MARKSHEET",
+        "type": "CERTIFICATE",
         "content": {
-          "registration_no": "",
-          "name": "",
-          "gpa": "7.91",
-          "subjects": [
-            {
-              "code": "PL.PATH.504",
-              "title": "Principles of Plant Pathology",
-              "credit_points": "23.1"
-            },
-            {
-              "code": "PL.PATH.507",
-              "title": "Diseases of Field and Medicinal Crops",
-              "credit_points": "24.6"
-            },
-            {
-              "code": "PL.PATH.515",
-              "title": "Biological Control of Plant Diseases",
-              "credit_points": "24.3"
-            },
-            {
-              "code": "AG.STAT.533",
-              "title": "Statistical Methods for Crop Protection - I",
-              "credit_points": "20.1"
-            },
-            {
-              "code": "BIOCHEM.505",
-              "title": "Techniques in Biochemistry",
-              "credit_points": "21.9"
-            },
-            {
-              "code": "PGS 501",
-              "title": "Library & Information Services @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 502",
-              "title": "Technical Writing & Communications Skills@",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 503",
-              "title": "Intellectual Property & Its Management in Agriculture @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 504",
-              "title": "Agricultural Research, Research Ethics & Rural Development Programme @",
-              "credit_points": "---"
-            },
-            {
-              "code": "PGS 505",
-              "title": "Disaster Management@",
-              "credit_points": "---"
-            }
-          ]
+          "certificate_no": "0002990",
+          "no": "1/47/2017",
+          "name": "Surbhi",
+          "degree": "Bachelor of Science",
+          "branch": "Agriculture",
+          "ogpa": "7.56",
+          "year": "2015-2016",
+          "date": "January 12, 2017",
+          "class_division": "first Clagg bitb Distinction"
         }
       }
     ]
@@ -653,51 +758,348 @@
     "filename": "40_VER_Marksheet.pdf",
     "data": [
       {
-        "type": "MARKSHEET",
+        "type": "TRANSCRIPT",
         "content": {
           "registration_no": "4011118019",
           "name": "KOLADIYA KAVIT RAMESHBHAI",
-          "gpa": "8.53",
-          "subjects": [
+          "degree": "Diploma in Agriculture",
+          "admission_year": "",
+          "completion_year": "",
+          "ogpa": "6.98",
+          "result": "",
+          "class_division": "First Class",
+          "years": [
             {
-              "code": "AG. EXT. 6.2",
-              "title": "ENTREPRENEURSHIP DEVELOPMENT",
-              "credit_points": "16.8"
+              "year": "FIRST YEAR",
+              "semesters": [
+                {
+                  "semester": "FIRST SEMESTER",
+                  "gpa": "6.98",
+                  "cgpa": "6.98",
+                  "courses": [
+                    {
+                      "course_number": "AGRON.1.1",
+                      "title": "AGRICULTURAL HERITAGE",
+                      "credit_points": "6.6"
+                    },
+                    {
+                      "course_number": "ENG.1.1",
+                      "title": "COMPREHENSION AND COMMUNICATION SKILLS IN ENGLISH",
+                      "credit_points": "12.4"
+                    },
+                    {
+                      "course_number": "AG.ECON.1.1",
+                      "title": "FUNDAMENTALS OF AGRICULTURAL ECONOMICS",
+                      "credit_points": "13.6"
+                    },
+                    {
+                      "course_number": "AGRON.1.2",
+                      "title": "FUNDAMENTALS OF AGRONOMY",
+                      "credit_points": "30.4"
+                    },
+                    {
+                      "course_number": "AG.ENTO.1.1",
+                      "title": "FUNDAMENTALS OF ENTOMOLOGY",
+                      "credit_points": "22.2"
+                    },
+                    {
+                      "course_number": "HORT.1.1",
+                      "title": "FUNDAMENTALS OF HORTICULTURE",
+                      "credit_points": "14.8"
+                    },
+                    {
+                      "course_number": "PL.PATH.1.1",
+                      "title": "FUNDAMENTALS OF PLANT PATHOLOGY",
+                      "credit_points": "17.4"
+                    },
+                    {
+                      "course_number": "GPB.1.1",
+                      "title": "INTRODUCTORY BIOLOGY",
+                      "credit_points": "15.2"
+                    },
+                    {
+                      "course_number": "HVE.1.1",
+                      "title": "HUMAN VALUE AND ETHICS (NON-GRADIAL) @",
+                      "credit_points": "---"
+                    },
+                    {
+                      "course_number": "P.E.1.1",
+                      "title": "NSS/NCC/PHYSICAL EDUCATION AND YOGA PRACTICES (NON-GRADIAL) @",
+                      "credit_points": "---"
+                    }
+                  ]
+                },
+                {
+                  "semester": "SECOND SEMESTER",
+                  "gpa": "6.91",
+                  "cgpa": "6.94",
+                  "courses": [
+                    {
+                      "course_number": "MATHS.2.1",
+                      "title": "ELEMENTARY MATHEMATICS",
+                      "credit_points": "11.2"
+                    },
+                    {
+                      "course_number": "AGRON.2.3",
+                      "title": "FARMING SYSTEMS AND FARM MANAGEMENT",
+                      "credit_points": "16.0"
+                    },
+                    {
+                      "course_number": "PL.PHY.2.1",
+                      "title": "FUNDAMENTALS OF CROP PHYSIOLOGY",
+                      "credit_points": "20.4"
+                    },
+                    {
+                      "course_number": "AG.CHEM.2.1",
+                      "title": "FUNDAMENTALS OF SOIL SCIENCE",
+                      "credit_points": "20.7"
+                    },
+                    {
+                      "course_number": "PL.PATH.2.2",
+                      "title": "INTRODUCTORY PLANT NEMATOLOGY",
+                      "credit_points": "15.4"
+                    },
+                    {
+                      "course_number": "AG.ENTO.2.2",
+                      "title": "PRINCIPLES OF INTEGRATED PEST MANAGEMENT",
+                      "credit_points": "21.6"
+                    },
+                    {
+                      "course_number": "LPM2.1",
+                      "title": "PRINCIPLES OF LIVESTOCK PRODUCTION AND MANAGEMENT",
+                      "credit_points": "18.3"
+                    },
+                    {
+                      "course_number": "HORT.2.2",
+                      "title": "PRODUCTION TECHNOLOGY FOR FRUIT AND PLANTATION CROPS",
+                      "credit_points": "14.6"
+                    },
+                    {
+                      "course_number": "P.E.2.2",
+                      "title": "NSS/NCC/PHYSICAL EDUCATION AND YOGA PRACTICES (NON-GRADIAL)",
+                      "credit_points": "---"
+                    }
+                  ]
+                }
+              ]
             },
             {
-              "code": "HORT. 6.6",
-              "title": "GREEN HOUSE TECHNOLOGY",
-              "credit_points": "17.2"
+              "year": "SECOND YEAR",
+              "semesters": [
+                {
+                  "semester": "THIRD SEMESTER",
+                  "gpa": "7.05",
+                  "cgpa": "6.98",
+                  "courses": [
+                    {
+                      "course_number": "AGRON.3.4",
+                      "title": "CROP PRODUCTION TECHNOLOGY-I (KHARIF CROPS)",
+                      "credit_points": "21.0"
+                    },
+                    {
+                      "course_number": "PL.PATH.3.3",
+                      "title": "DISEASES OF FIELD AND HORTICULTURAL CROPS AND THEIR MANAGEMENT-I",
+                      "credit_points": "21.9"
+                    },
+                    {
+                      "course_number": "GPB.3.2",
+                      "title": "FUNDAMENTALS OF GENETICS",
+                      "credit_points": "19.8"
+                    },
+                    {
+                      "course_number": "AG.ENGG.3.1",
+                      "title": "INTRODUCTORY AGRICULTURAL ENGINEERING",
+                      "credit_points": "13.8"
+                    },
+                    {
+                      "course_number": "AG.CHEM.3.2",
+                      "title": "MANURES, FERTILIZERS AND SOIL FERTILITY MANAGEMENT",
+                      "credit_points": "18.9"
+                    },
+                    {
+                      "course_number": "AG.ENTO.3.3",
+                      "title": "PESTS OF FIELD CROPS & STORED GRAIN AND THEIR MANAGEMENT",
+                      "credit_points": "23.1"
+                    },
+                    {
+                      "course_number": "AGRON.3.5",
+                      "title": "PRACTICAL CROP PRODUCTION-I (KHARIF CROPS)",
+                      "credit_points": "7.9"
+                    },
+                    {
+                      "course_number": "HORT.3.3",
+                      "title": "PRODUCTION TECHNOLOGY FOR VEGETABLE AND SPICES",
+                      "credit_points": "21.6"
+                    },
+                    {
+                      "course_number": "P.E.3.3",
+                      "title": "NSS/NCC/PHYSICAL EDUCATION AND YOGA PRACTICES (NON-GRADIAL)",
+                      "credit_points": "---"
+                    }
+                  ]
+                },
+                {
+                  "semester": "FOURTH SEMESTER",
+                  "gpa": "8.76",
+                  "cgpa": "7.46",
+                  "courses": [
+                    {
+                      "course_number": "AG.STAT.4.1",
+                      "title": "AGRICULTURAL INFORMATICS",
+                      "credit_points": "26.1"
+                    },
+                    {
+                      "course_number": "AGRON.4.6",
+                      "title": "CROP PRODUCTION TECHNOLOGY-II (RABI CROPS)",
+                      "credit_points": "28.8"
+                    },
+                    {
+                      "course_number": "PL.PATH.4.4",
+                      "title": "DISEASES OF FIELD AND HORTICULTURAL CROPS AND THEIR MANAGEMENT-II",
+                      "credit_points": "27.9"
+                    },
+                    {
+                      "course_number": "AG.MET.4.1",
+                      "title": "INTRODUCTORY AGRO METEOROLOGY & CLIMATE CHANGE",
+                      "credit_points": "18.4"
+                    },
+                    {
+                      "course_number": "AG.ENGG.4.2",
+                      "title": "INTRODUCTORY SOIL AND WATER CONSERVATION ENGINEERING",
+                      "credit_points": "15.6"
+                    },
+                    {
+                      "course_number": "AG.ENTO.4.4",
+                      "title": "PESTS OF HORTICULTURAL CROPS AND THEIR MANAGEMENT",
+                      "credit_points": "26.1"
+                    },
+                    {
+                      "course_number": "AGRON.4.7",
+                      "title": "PRACTICAL CROP PRODUCTION-II (RABI CROPS)",
+                      "credit_points": "9.2"
+                    },
+                    {
+                      "course_number": "AG.CHEM.4.3",
+                      "title": "PROBLEMATIC SOILS AND THEIR MANAGEMENT",
+                      "credit_points": "23.1"
+                    },
+                    {
+                      "course_number": "HORT.4.4",
+                      "title": "PRODUCTION TECHNOLOGY OF FLOWER CROPS AND LANDSCAPING",
+                      "credit_points": "17.6"
+                    },
+                    {
+                      "course_number": "P.E.4.4",
+                      "title": "NSS/NCC/PHYSICAL EDUCATION AND YOGA PRACTICES (NON-GRADIAL)",
+                      "credit_points": "---"
+                    }
+                  ]
+                }
+              ]
             },
             {
-              "code": "PL. PATH. 6.5",
-              "title": "MUSHROOM PRODUCTION TECHNOLOGY",
-              "credit_points": "16.4"
-            },
-            {
-              "code": "HORT. 6.5",
-              "title": "PRESERVATION AND VALUE ADDITION IN HORTICULTURAL CROPS",
-              "credit_points": "16.8"
-            },
-            {
-              "code": "AGRON. 6.10",
-              "title": "PRINCIPLES OF ORGANIC FARMING",
-              "credit_points": "18.0"
-            },
-            {
-              "code": "GPB 6.4",
-              "title": "SEED PRODUCTION TECHNOLOGY",
-              "credit_points": "16.6"
-            },
-            {
-              "code": "AGRON. 6.11",
-              "title": "VERMICOMPOST",
-              "credit_points": "17.6"
-            },
-            {
-              "code": "E.T. 6.1",
-              "title": "EDUCATIONAL TOUR",
-              "credit_points": "---"
+              "year": "THIRD YEAR",
+              "semesters": [
+                {
+                  "semester": "FIFTH SEMESTER",
+                  "gpa": "8.02",
+                  "cgpa": "7.58",
+                  "courses": [
+                    {
+                      "course_number": "AG.MICRO.5.1",
+                      "title": "AGRICULTURAL MICROBIOLOGY",
+                      "credit_points": "17.4"
+                    },
+                    {
+                      "course_number": "AG.ENGG.5.3",
+                      "title": "FARM MACHINERY AND POWER",
+                      "credit_points": "24.6"
+                    },
+                    {
+                      "course_number": "AG.EXT.5.1",
+                      "title": "FUNDAMENTALS OF EXTENSION EDUCATION AND COMMUNICATION",
+                      "credit_points": "21.3"
+                    },
+                    {
+                      "course_number": "BIOCHEM.5.1",
+                      "title": "FUNDAMENTALS OF PLANT BIOCHEMISTRY",
+                      "credit_points": "23.4"
+                    },
+                    {
+                      "course_number": "GPB.5.3",
+                      "title": "FUNDAMENTALS OF PLANT BREEDING",
+                      "credit_points": "27.9"
+                    },
+                    {
+                      "course_number": "LPM.5.2",
+                      "title": "PRINCIPLES OF POULTRY PRODUCTION AND MANAGEMENT",
+                      "credit_points": "16.0"
+                    },
+                    {
+                      "course_number": "AGRON.5.9",
+                      "title": "PRINCIPLES OF WATER MANAGEMENT",
+                      "credit_points": "27.0"
+                    },
+                    {
+                      "course_number": "AGRON.5.8",
+                      "title": "PRINCIPLES OF WEED MANAGEMENT",
+                      "credit_points": "15.6"
+                    },
+                    {
+                      "course_number": "AG.STAT.5.2",
+                      "title": "STATISTICAL METHODS",
+                      "credit_points": "19.2"
+                    }
+                  ]
+                },
+                {
+                  "semester": "SIXTH SEMESTER",
+                  "gpa": "8.53",
+                  "cgpa": "7.70",
+                  "courses": [
+                    {
+                      "course_number": "AG.EXT.6.2",
+                      "title": "ENTREPRENEURSHIP DEVELOPMENT",
+                      "credit_points": "16.8"
+                    },
+                    {
+                      "course_number": "HORT.6.6",
+                      "title": "GREEN HOUSE TECHNOLOGY",
+                      "credit_points": "17.2"
+                    },
+                    {
+                      "course_number": "PL.PATH.6.5",
+                      "title": "MUSHROOM PRODUCTION TECHNOLOGY",
+                      "credit_points": "16.4"
+                    },
+                    {
+                      "course_number": "HORT.6.5",
+                      "title": "PRESERVATION AND VALUE ADDITION IN HORTICULTURAL CROPS",
+                      "credit_points": "16.8"
+                    },
+                    {
+                      "course_number": "AGRON.6.10",
+                      "title": "PRINCIPLES OF ORGANIC FARMING",
+                      "credit_points": "18.0"
+                    },
+                    {
+                      "course_number": "GPB.6.4",
+                      "title": "SEED PRODUCTION TECHNOLOGY",
+                      "credit_points": "16.6"
+                    },
+                    {
+                      "course_number": "AGRON.6.11",
+                      "title": "VERMICOMPOST",
+                      "credit_points": "17.6"
+                    },
+                    {
+                      "course_number": "E.T.6.1",
+                      "title": "EDUCATIONAL TOUR @",
+                      "credit_points": "---"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -708,20 +1110,6 @@
     "filename": "95_VER_Bachelor Document.pdf",
     "data": [
       {
-        "type": "CERTIFICATE",
-        "content": {
-          "certificate_no": "0006663",
-          "no": "xvmnssnozg",
-          "name": "Ladumor Divyesh Bholabhai",
-          "degree": "Bachelor of Science (Honours)",
-          "branch": "Horticulture",
-          "ogpa": "7.603",
-          "year": "2021-2022",
-          "date": "January 09, 2023",
-          "class_division": "I Division"
-        }
-      },
-      {
         "type": "TRANSCRIPT",
         "content": {
           "registration_no": "3020618035",
@@ -729,9 +1117,9 @@
           "degree": "B.Sc. (Hons.) Horticulture",
           "admission_year": "2018-2019",
           "completion_year": "2021-2022",
-          "ogpa": "7.492",
-          "result": null,
-          "class_division": null,
+          "ogpa": "7.603",
+          "result": "PASS",
+          "class_division": "I Division",
           "years": [
             {
               "year": "FIRST YEAR",
@@ -996,18 +1384,18 @@
                     },
                     {
                       "course_number": "PPT.5.6",
-                      "title": "DISEASES OF VEGETABLES, ORNAMENTALS AND SPICE CROPS",
+                      "title": "DISEASES OF VEGETABLES, ORNAMENTAL AND SPICE CROPS",
                       "credit_points": "22.800"
                     },
                     {
                       "course_number": "PPT.5.7",
                       "title": "INSECT PESTS OF VEGETABLE, ORNAMENTAL AND SPICE CROPS",
-                      "credit_points": "22.600"
+                      "credit_points": "22.800"
                     },
                     {
                       "course_number": "SSC.5.7",
                       "title": "FUNDAMENTALS OF EXTENSION EDUCATION",
-                      "credit_points": "16.200"
+                      "credit_points": "18.200"
                     },
                     {
                       "course_number": "VEG.5.5",
@@ -1086,7 +1474,7 @@
                 {
                   "semester": "SEVENTH SEMESTER",
                   "gpa": "7.995",
-                  "cgpa": "7.556",
+                  "cgpa": "7.555",
                   "courses": [
                     {
                       "course_number": "HWE.7.1.1",
@@ -1153,43 +1541,17 @@
         }
       },
       {
-        "type": "MARKSHEET",
+        "type": "CERTIFICATE",
         "content": {
-          "registration_no": "3020618035",
-          "name": "LADUMOR DIVYESH BHOLABHAI",
-          "gpa": "7.977",
-          "subjects": [
-            {
-              "code": "RHWE 8.2",
-              "title": "EDUCATION TOUR",
-              "credit_points": "15.700"
-            },
-            {
-              "code": "RHWE 8.5",
-              "title": "HORTICULTURAL INDUSTRIAL PHASE (PROCESSING UNIT, NURSERIES, PROGRESSIVE FARMS ETC)",
-              "credit_points": "25.950"
-            },
-            {
-              "code": "RHWE 8.6",
-              "title": "ON CAMPUS TRAINING PHASE",
-              "credit_points": "39.500"
-            },
-            {
-              "code": "RHWE 8.1",
-              "title": "ORIENTATION PROGRAMME PHASE",
-              "credit_points": "17.000"
-            },
-            {
-              "code": "RHWE 8.4",
-              "title": "RESEARCH / KVK PHASE",
-              "credit_points": "40.250"
-            },
-            {
-              "code": "RHWE 8.3",
-              "title": "VILLAGE PHASE",
-              "credit_points": "21.150"
-            }
-          ]
+          "certificate_no": "0006663",
+          "no": "xvmnssnozg",
+          "name": "Ladumor Divyesh Bholabhai",
+          "degree": "Bachelor of Science (Honours)",
+          "branch": "Horticulture",
+          "ogpa": "7.603",
+          "year": "2021-2022",
+          "date": "January 09, 2023",
+          "class_division": "I Division"
         }
       }
     ]
