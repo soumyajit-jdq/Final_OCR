@@ -393,15 +393,15 @@ Return ONLY the JSON.
         # 1. Try Gemini First (LLM + Vision)
         if GEMINI_API_KEY:
             try:
-                # If OCR failed or is poor quality, use Vision
-                use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 100
-                images = image_data if use_vision else None
-
+                # ALWAYS use vision if images are available for better table parsing
+                images = image_data if image_data else None
+                
+                # If no images but we have OCR text, we still proceed, but Vision is preferred
                 result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=images)
-                logger.info(f"Gemini Extraction successful (Vision: {use_vision}).")
+                logger.info(f"Gemini Marksheet Extraction successful (Vision: {bool(images)}).")
                 return result
             except Exception as e:
-                logger.warning(f"Gemini Extraction failed after retries: {e}. Falling back to Cerebras.")
+                logger.warning(f"Gemini Marksheet Extraction failed: {e}. Falling back to Cerebras.")
 
         # 2. Try Cerebras Fallback
         if CEREBRAS_API_KEY:
@@ -479,11 +479,12 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            # If OCR failed or is poor quality, use Vision
-            use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 200
-            images = image_data if use_vision else None
+            # ALWAYS use vision for transcripts to handle complex hierarchical tables
+            images = image_data if image_data else None
 
-            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=images)
+            result = await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=images)
+            logger.info(f"Gemini Transcript Extraction successful (Vision: {bool(images)}).")
+            return result
         except Exception as e:
             logger.error(f"Transcript Extraction failed: {e}")
             raise e

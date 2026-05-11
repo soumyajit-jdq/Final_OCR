@@ -49,19 +49,22 @@ class CertificateData(BaseModel):
 # PORT UTILITIES
 def force_free_port(port: int):
     """Detects and kills any process using the specified port."""
-    for conn in psutil.net_connections():
-        if conn.laddr.port == port:
-            if conn.pid:
-                try:
-                    p = psutil.Process(conn.pid)
-                    logger.info(f"Port {port} is occupied by {p.name()} (PID: {conn.pid}). Terminating...")
-                    p.terminate()
-                    p.wait(timeout=3)
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+    try:
+        for conn in psutil.net_connections():
+            if conn.laddr.port == port:
+                if conn.pid:
                     try:
-                        p.kill()
-                    except:
-                        pass
+                        p = psutil.Process(conn.pid)
+                        logger.info(f"Port {port} is occupied by {p.name()} (PID: {conn.pid}). Terminating...")
+                        p.terminate()
+                        p.wait(timeout=3)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+                        try:
+                            p.kill()
+                        except:
+                            pass
+    except Exception as e:
+        logger.warning(f"Could not check for processes on port {port}: {e}")
 
 # HELPER FUNCTIONS
 def compress_image(image_bytes: bytes, max_kb: int = 1000):
