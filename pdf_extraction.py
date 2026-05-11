@@ -188,16 +188,23 @@ async def process_pdf_with_extraction(input_pdf, output_folder):
                     if merged_transcript is None:
                         merged_transcript = page_result
                     else:
+                        # Merge header fields (fill any blanks from later pages)
+                        for field in ["registration_no", "name", "degree", "ogpa", "class_division", "admission_year", "completion_year", "result"]:
+                            if not merged_transcript.get(field) and page_result.get(field):
+                                merged_transcript[field] = page_result[field]
+                        
                         # Merge years and semesters from this page into the main result
                         for year_data in page_result.get("years", []):
-                            # Find if year already exists
                             existing_year = next((y for y in merged_transcript["years"] if y["year"] == year_data["year"]), None)
                             if existing_year:
                                 for sem_data in year_data.get("semesters", []):
-                                    # Find if semester already exists
                                     existing_sem = next((s for s in existing_year["semesters"] if s["semester"] == sem_data["semester"]), None)
                                     if existing_sem:
-                                        existing_sem["courses"].extend(sem_data["courses"])
+                                        # Keep the semester with more courses (avoid duplicates)
+                                        if len(sem_data["courses"]) > len(existing_sem["courses"]):
+                                            existing_sem["courses"] = sem_data["courses"]
+                                            if sem_data.get("gpa"): existing_sem["gpa"] = sem_data["gpa"]
+                                            if sem_data.get("cgpa"): existing_sem["cgpa"] = sem_data["cgpa"]
                                     else:
                                         existing_year["semesters"].append(sem_data)
                             else:
@@ -205,7 +212,29 @@ async def process_pdf_with_extraction(input_pdf, output_folder):
                 
                 structured_json = merged_transcript
             elif doc_type == "MARKSHEET":
-                structured_json = await ProcessingService.extract_with_ai(images_bytes, combined_text)
+                # Treat each marksheet page as a transcript page too (for combined docs)
+                print(f"🔄 Processing {len(images_bytes)} marksheet pages as transcript...")
+                merged_transcript = None
+                for idx, (img_bytes, page_text) in enumerate(zip(images_bytes, [p[2] for p in group])):
+                    page_result = await ProcessingService.extract_transcript_with_ai([img_bytes], page_text)
+                    if merged_transcript is None:
+                        merged_transcript = page_result
+                    else:
+                        for year_data in page_result.get("years", []):
+                            existing_year = next((y for y in merged_transcript["years"] if y["year"] == year_data["year"]), None)
+                            if existing_year:
+                                for sem_data in year_data.get("semesters", []):
+                                    existing_sem = next((s for s in existing_year["semesters"] if s["semester"] == sem_data["semester"]), None)
+                                    if existing_sem:
+                                        if len(sem_data["courses"]) > len(existing_sem["courses"]):
+                                            existing_sem["courses"] = sem_data["courses"]
+                                    else:
+                                        existing_year["semesters"].append(sem_data)
+                            else:
+                                merged_transcript["years"].append(year_data)
+                # Override doc_type so it consolidates into TRANSCRIPT
+                doc_type = "TRANSCRIPT"
+                structured_json = merged_transcript
             elif doc_type == "CERTIFICATE":
                 structured_json = await ProcessingService.extract_certificate_with_ai(images_bytes, combined_text)
 
@@ -222,10 +251,16 @@ async def process_pdf_with_extraction(input_pdf, output_folder):
     # --- STEP 3: CONSOLIDATE RESULTS ---
     consolidated = {}
     
-    for res in pdf_results:
+    # Priority order: TRANSCRIPT > MARKSHEET > CERTIFICATE
+    # We first initialize with transcripts to ensure they become the 'main' record
+    for res in sorted(pdf_results, key=lambda x: 1 if x["type"] == "TRANSCRIPT" else 2):
         dtype = res["type"]
         content = res["content"]
         
+        # All MARKSHEET types are now converted to TRANSCRIPT above,
+        # so the consolidation only needs to handle TRANSCRIPT + TRANSCRIPT merging.
+        # Remove the old MARKSHEET->TRANSCRIPT merge hack.
+
         if dtype not in consolidated:
             consolidated[dtype] = content
             continue
@@ -246,7 +281,7 @@ async def process_pdf_with_extraction(input_pdf, output_folder):
                     for new_sem in new_year.get("semesters", []):
                         existing_sem = next((s for s in existing_year["semesters"] if s["semester"] == new_sem["semester"]), None)
                         if existing_sem:
-                            # Keep the semester with more courses, or merge them
+                            # Keep the semester with more courses
                             if len(new_sem["courses"]) > len(existing_sem["courses"]):
                                 existing_sem["courses"] = new_sem["courses"]
                                 if new_sem.get("gpa"): existing_sem["gpa"] = new_sem["gpa"]

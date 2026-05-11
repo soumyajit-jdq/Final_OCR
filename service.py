@@ -278,15 +278,18 @@ class ProcessingService:
         # 1. Faster, more reliable Keyword Map
         # Check certificates first because they often mention "Transcript" or "Marks" in titles
         certificate_triggers = ["conferred upon", "degree certificate", "passing certificate", "provisional certificate"]
-        transcript_triggers = ["official transcript", "academic record", "consolidated marks"]
-        marksheet_triggers = ["statement of marks", "grade card", "memo of marks", "evaluation report"]
+        transcript_keywords = ["TRANSCRIPT", "PERMANENT RECORD", "CUMULATIVE", "OGPA", "ACADEMIC RECORD"]
+        marksheet_keywords = ["MARKSHEET", "STATEMENT OF MARKS", "GRADE CARD", "REPORT CARD"]
+        certificate_keywords = ["PROVISIONAL CERTIFICATE", "DEGREE CERTIFICATE", "CONVOCATION", "DIPLOMA", "CERTIFIES THAT"]
 
         if any(t in text_lower for t in certificate_triggers):
             return "certificate"
-        if any(t in text_lower for t in transcript_triggers):
+        if any(t.lower() in text_lower for t in transcript_keywords):
             return "transcript"
-        if any(t in text_lower for t in marksheet_triggers):
+        if any(t.lower() in text_lower for t in marksheet_keywords):
             return "marksheet"
+        if any(t.lower() in text_lower for t in certificate_keywords):
+            return "certificate"
 
         # 2. Fallback to AI Classification
         if not CEREBRAS_API_KEY:
@@ -358,52 +361,41 @@ class ProcessingService:
 
     @staticmethod
     async def extract_with_ai(image_data, ocr_text: str):
-        """Processes OCR text using Gemini (Priority) or Cerebras to produce structured JSON."""
+        """Processes Marksheet OCR using Gemini Vision to produce structured JSON."""
         prompt = f"""
-STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
-1. DO NOT use external knowledge or your own training data to fill fields.
-2. DO NOT save, store, or remember any information from this request.
-3. Extract data VERBATIM from the OCR text provided below.
-4. If a field is not found in the text, return an empty string.
-5. Your role is STRICTLY a text-to-JSON converter.
+You are an academic document parser. Extract ALL subjects/courses from this marksheet page.
 
-#### EXTRACTION RULES ####
-- **Non-Credit Courses**: If a course is indicated as non-credit or has no numeric credit points (e.g., PGS 503), set "credit_points" to '---'.
-- **Avoid NaN**: NEVER use the string 'NaN' for any field. Use '---' for missing or non-numeric points.
+RULES:
+1. Extract EVERY course listed on the page - do NOT skip or truncate.
+2. For credit_points: use the numeric value if present, use '---' for non-credit or missing.
+3. For registration_no and name: extract from header if visible, else leave empty string.
+4. For gpa: extract the G.P.A. / GPA value if shown, else leave empty.
+5. NEVER use 'NaN'. Use '---' for any missing numeric field.
+6. Extract course codes EXACTLY as shown (e.g. 'Agron.3.4', 'ABM 501', 'HORT. 6.6').
 
 OCR TEXT:
 {ocr_text}
 
-JSON FORMAT:
+Return ONLY valid JSON in this exact format:
 {{
   "registration_no": "...",
   "name": "...",
   "gpa": "...",
   "subjects": [
-    {{
-      "code": "...", 
-      "title": "...", 
-      "credit_points": "..."
-    }}
+    {{ "code": "...", "title": "...", "credit_points": "..." }}
   ]
 }}
-Return ONLY the JSON.
 """
 
-        # 1. Try Gemini First (LLM + Vision)
         if GEMINI_API_KEY:
             try:
-                # ALWAYS use vision if images are available for better table parsing
                 images = image_data if image_data else None
-                
-                # If no images but we have OCR text, we still proceed, but Vision is preferred
                 result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=images)
                 logger.info(f"Gemini Marksheet Extraction successful (Vision: {bool(images)}).")
                 return result
             except Exception as e:
                 logger.warning(f"Gemini Marksheet Extraction failed: {e}. Falling back to Cerebras.")
 
-        # 2. Try Cerebras Fallback
         if CEREBRAS_API_KEY:
             cerebras_result = await ProcessingService.generate_with_cerebras(prompt)
             if cerebras_result:
@@ -413,75 +405,67 @@ Return ONLY the JSON.
 
     @staticmethod
     async def extract_transcript_with_ai(image_data, ocr_text: str):
-        """Processes Transcript OCR text using Gemini (Priority)."""
+        """Processes Transcript OCR text using Gemini Vision. Handles multi-page documents page-by-page."""
         prompt = f"""
-STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
-1. DO NOT use external knowledge; extract ONLY from the text provided.
-2. DO NOT save or log the data.
-3. Your role is strictly mapping OCR text to a NESTED HIERARCHY.
-4. Format Year and Semester as ALL CAPS WORDS.
+You are an expert academic transcript parser. Your job is to extract EVERY piece of data from this single page of a transcript.
 
-#### FIELD EXTRACTION RULES ####
-1. **Header & Summary**: Extract `registration_no`, `name`, `degree`, `admission_year`, `completion_year`, `ogpa`, `result`, and `class_division` (Abstract section).
-2. **Vertical Row-Shifting (CRITICAL)**: 
-   - Some semesters use "One-Row Up Offset". 
-   - **Detection**: Look at the line containing the Semester Title (e.g., "THIRD SEMESTER 7.8").
-     - If the Semester Title line ends with a number (e.g., "7.8" or "7.1"), an **OFFSET** is active for that entire semester.
-     - **Mapping Rule**: The credit points for Course N are found on the line of Course N-1 (or the Semester Header for the first course).
-     - Example (3rd Sem): Header has "7.8" -> `Agron.3.4` gets `7.8`. `Agron.3.4` line has "15.2" -> `Agron.3.5` gets `15.2`.
-   - If no number is in the header, use "Same-Line Alignment".
-3. **Orphan Lines**: If a course has no numeric points on its own line or the previous line, look at the nearest orphan line (line with only numbers).
-4. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points (and no shifted points), set "credit_points" to '---'.
-5. **GPA/CGPA**: Extract "G.P.A." and "C.G.P.A." for each semester.
+#### CRITICAL SEMESTER-TO-YEAR MAPPING RULE ####
+You MUST map semester numbers to year labels using this FIXED mapping:
+- 1st Semester, 2nd Semester  -> "FIRST YEAR"
+- 3rd Semester, 4th Semester  -> "SECOND YEAR"
+- 5th Semester, 6th Semester  -> "THIRD YEAR"
+- 7th Semester, 8th Semester  -> "FOURTH YEAR"
+- 1st Sem (PG), 2nd Sem (PG)  -> "FIRST YEAR" (for post-grad records)
+- 3rd Sem (PG), 4th Sem (PG)  -> "SECOND YEAR" (for post-grad records)
 
-#### FORMATTING ####
-- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
-- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
-- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
-- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
+Semester ordinal words: "First"=1, "Second"=2, "Third"=3, "Fourth"=4, "Fifth"=5, "Sixth"=6, "Seventh"=7, "Eighth"=8.
 
-#### CHARACTER ACCURACY & TITLES ####
-1. ROMAN NUMERALS: OCR misreads "1", "l", "|" as "I" and "ll", "11", "IT" as "II".
-   - **ALWAYS** convert numerical suffixes to Roman: "Practical Crop Production-1" -> "Practical Crop Production-I", "Field Crops-ll" -> "Field Crops-II", "RAWE-l" -> "RAWE-I".
-   - For `Pl.Phy.3.1`, ensure the title is "Crop Physiology - I".
-2. COURSE CODES: Remove all spaces: "Agron. 1.1" -> "Agron.1.1". Correct prefixes: "LPM", "Ag.Econ", "Ag.Ento", "Pl.Phy", "Ag.Extn".
-3. VERBATIM TITLES: Keep "Systamatics" exactly as spelled.
+#### EXTRACTION RULES ####
+1. Extract student header: registration_no, name, degree, admission_year, completion_year, ogpa, result, class_division.
+2. Extract EVERY course listed on this page - do NOT skip or truncate any.
+3. For credit_points: extract the numeric value shown. Use '---' for non-credit courses (marked with @, grade S, or no points).
+4. For GPA/CGPA: look for "G.P.A." or "GPA" and "C.G.P.A." or "CGPA" near the semester footer.
+5. VERTICAL ROW OFFSET: If the semester header line ends with a number (e.g. "THIRD SEMESTER 7.8"), that number is the credit_points for the FIRST course in that semester. Each subsequent course's credit_points comes from the PREVIOUS course's line.
+6. ROMAN NUMERALS: Convert OCR errors - "1" at end -> "I", "ll"/"11" -> "II".
+7. COURSE CODES: Remove internal spaces ("Agron. 3.4" -> "Agron.3.4").
+8. If a field is not present on this page, use empty string "".
 
-OCR TEXT:
+FORMATTING:
+- year: MUST be one of: "FIRST YEAR", "SECOND YEAR", "THIRD YEAR", "FOURTH YEAR"
+- semester: MUST be one of: "FIRST SEMESTER", "SECOND SEMESTER", "THIRD SEMESTER", "FOURTH SEMESTER", "FIFTH SEMESTER", "SIXTH SEMESTER", "SEVENTH SEMESTER", "EIGHTH SEMESTER"
+
+OCR TEXT FROM THIS PAGE:
 {ocr_text}
 
-JSON STRUCTURE:
+Return ONLY valid JSON:
 {{
-  "registration_no": "...",
-  "name": "...",
-  "degree": "...",
-  "admission_year": "...",
-  "completion_year": "...",
-  "ogpa": "...",
-  "result": "...",
-  "class_division": "...",
+  "registration_no": "",
+  "name": "",
+  "degree": "",
+  "admission_year": "",
+  "completion_year": "",
+  "ogpa": "",
+  "result": "",
+  "class_division": "",
   "years": [
     {{
-      "year": "...",
+      "year": "FIRST YEAR",
       "semesters": [
         {{
-            "semester": "...",
-            "gpa": "...",
-            "cgpa": "...",
-            "courses": [
-              {{ "course_number": "...", "title": "...", "credit_points": "..." }}
-            ]
+          "semester": "FIRST SEMESTER",
+          "gpa": "",
+          "cgpa": "",
+          "courses": [
+            {{ "course_number": "", "title": "", "credit_points": "" }}
+          ]
         }}
       ]
     }}
   ]
 }}
-Return ONLY JSON.
 """
         try:
-            # ALWAYS use vision for transcripts to handle complex hierarchical tables
             images = image_data if image_data else None
-
             result = await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=images)
             logger.info(f"Gemini Transcript Extraction successful (Vision: {bool(images)}).")
             return result
