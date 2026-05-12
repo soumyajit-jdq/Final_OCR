@@ -69,3 +69,17 @@ class ValidationResponse(BaseModel):
     is_valid: bool = Field(..., description="Whether the document meets quality standards")
     instruction: str = Field(..., description="User-friendly instruction for the pop-up")
     file_type: Optional[str] = None
+
+class ProcessingResult(BaseModel):
+    filename: str
+    doc_type: str
+    status: str
+    data: Optional[dict] = None
+    error: Optional[str] = None
+    # ledger_hash: Optional[str] = None
+
+class BulkProcessingResponse(BaseModel):
+    total_files: int
+    processed_files: int
+    failed_files: int
+    results: List[ProcessingResult]

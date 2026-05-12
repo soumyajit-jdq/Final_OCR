@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from service import ProcessingService
-from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData
+from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData, BulkProcessingResponse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -204,4 +204,20 @@ async def extract_transcript(file: UploadFile = File()):
         raise he
     except Exception as e:
         logger.exception("Transcript extraction route failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/bulk_process_zip", response_model=BulkProcessingResponse)
+async def bulk_process_zip(file: UploadFile = File()):
+    """
+    Upload a ZIP of PDFs, unzip, classify, extract, and upload to ledger.
+    """
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported.")
+    
+    try:
+        zip_bytes = await file.read()
+        results = await ProcessingService.process_zip(zip_bytes)
+        return results
+    except Exception as e:
+        logger.exception("Bulk ZIP processing failed")
         raise HTTPException(status_code=500, detail=str(e))

@@ -7,6 +7,9 @@ import io
 import logging
 import fitz
 import anyio
+import zipfile
+import shutil
+import tempfile
 from PIL import Image
 from web3 import Web3
 from collections import OrderedDict
@@ -24,6 +27,7 @@ OCR_API_KEY = os.getenv("OCR_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
+LEDGER_API_URL = os.getenv("LEDGER_API_URL", "http://localhost:5000/api/v1/ledger/upload") # Placeholder
 
 class ProcessingService:
     @staticmethod
@@ -176,7 +180,7 @@ class ProcessingService:
         return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
-    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 3):
+    async def process_pdf_pages(pdf_bytes: bytes, max_pages: int = 50):
         """High-resolution PDF processing (300 DPI)."""
         def sync_pdf_process():
             try:
@@ -276,17 +280,21 @@ class ProcessingService:
         text_lower = ocr_text.lower()
         
         # 1. Faster, more reliable Keyword Map
-        # Check certificates first because they often mention "Transcript" or "Marks" in titles
-        certificate_triggers = ["conferred upon", "degree certificate", "passing certificate", "provisional certificate"]
-        transcript_triggers = ["official transcript", "academic record", "consolidated marks"]
-        marksheet_triggers = ["statement of marks", "grade card", "memo of marks", "evaluation report"]
+        # Priorities: Evaluation Report -> Marksheet (Strongest)
+        # Semester presence -> Transcript
+        # Degree Certificate -> Certificate
+        transcript_triggers = ["semester", "transcript", "academic record", "consolidated marks"]
+        marksheet_triggers = ["marksheet", "evaluation report", "statement of marks", "grade card", "memo of marks"]
+        certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate"]
 
-        if any(t in text_lower for t in certificate_triggers):
-            return "certificate"
+        if "evaluation report" in text_lower:
+            return "marksheet"
         if any(t in text_lower for t in transcript_triggers):
             return "transcript"
         if any(t in text_lower for t in marksheet_triggers):
             return "marksheet"
+        if any(t in text_lower for t in certificate_triggers):
+            return "certificate"
 
         # 2. Fallback to AI Classification
         if not CEREBRAS_API_KEY:
@@ -393,15 +401,12 @@ Return ONLY the JSON.
         # 1. Try Gemini First (LLM + Vision)
         if GEMINI_API_KEY:
             try:
-                # If OCR failed or is poor quality, use Vision
-                use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 100
-                images = image_data if use_vision else None
-
-                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=images)
-                logger.info(f"Gemini Extraction successful (Vision: {use_vision}).")
+                # Always provide images to Gemini if available for best context
+                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=image_data)
+                logger.info("Gemini Extraction successful (Multi-modal).")
                 return result
             except Exception as e:
-                logger.warning(f"Gemini Extraction failed after retries: {e}. Falling back to Cerebras.")
+                logger.warning(f"Gemini Extraction failed: {e}. Falling back to Cerebras.")
 
         # 2. Try Cerebras Fallback
         if CEREBRAS_API_KEY:
@@ -479,11 +484,8 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            # If OCR failed or is poor quality, use Vision
-            use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 200
-            images = image_data if use_vision else None
-
-            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=images)
+            # Always use Vision for transcripts to ensure nested structure accuracy across all pages
+            return await ProcessingService.gemini_generate_with_retry(prompt, TranscriptData, images=image_data)
         except Exception as e:
             logger.error(f"Transcript Extraction failed: {e}")
             raise e
@@ -521,12 +523,9 @@ JSON STRUCTURE:
 Return ONLY JSON.
 """
         try:
-            # If OCR failed or is poor quality, use Vision
-            # (Certificates are usually 1 page, image_data could be bytes or list)
-            use_vision = "OCR Failed" in ocr_text or len(ocr_text) < 50
+            # Ensure images are passed as a list
             images = image_data if isinstance(image_data, list) else [image_data]
-            images = images if use_vision else None
-
+            
             result = await ProcessingService.gemini_generate_with_retry(prompt, CertificateData, images=images)
             if result.get("ogpa"):
                 # Clean up OGPA to remove any scale like "/ 10.00"
@@ -535,3 +534,188 @@ Return ONLY JSON.
         except Exception as e:
             logger.error(f"Certificate Extraction failed: {e}")
             raise e
+
+    @staticmethod
+    async def generate_ledger_hash(data: dict, doc_type: str):
+        """
+        Generates a canonical hash for manual ledger anchoring.
+        """
+        try:
+            # 1. Build canonical payload and generate hash
+            if doc_type == "marksheet":
+                payload = ProcessingService.build_canonical_payload(data)
+            elif doc_type == "transcript":
+                payload = ProcessingService.build_transcript_canonical_payload(data)
+            elif doc_type == "certificate":
+                payload = ProcessingService.build_certificate_canonical_payload(data)
+            else:
+                payload = json.dumps(data)
+
+            ledger_hash = await ProcessingService.generate_keccak256(payload)
+            logger.info(f"Generated Ledger Hash for manual anchoring ({doc_type}): {ledger_hash}")
+            return ledger_hash
+        except Exception as e:
+            logger.error(f"Hash generation failed: {e}")
+            return None
+
+    @staticmethod
+    async def process_zip(zip_bytes: bytes):
+        """
+        Processes a ZIP file containing multiple PDFs.
+        Supports mixed-document PDFs (e.g. marksheets followed by certificates).
+        Splits single PDFs into multiple logical sub-documents based on content.
+        """
+        results = []
+        temp_dir = tempfile.mkdtemp()
+        try:
+            zip_path = os.path.join(temp_dir, "upload.zip")
+            with open(zip_path, "wb") as f:
+                f.write(zip_bytes)
+
+            extract_path = os.path.join(temp_dir, "extracted")
+            os.makedirs(extract_path, exist_ok=True)
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+
+            pdf_files = []
+            for root, _, files in os.walk(extract_path):
+                for file in files:
+                    if file.lower().endswith(".pdf"):
+                        pdf_files.append(os.path.join(root, file))
+
+            total_files = len(pdf_files)
+            processed_count = 0
+            failed_count = 0
+
+            for pdf_path in pdf_files:
+                filename = os.path.basename(pdf_path)
+                logger.info(f"--- START PROCESSING: {filename} ---")
+                try:
+                    with open(pdf_path, "rb") as f:
+                        file_bytes = f.read()
+
+                    # 1. Validate
+                    validation = await ProcessingService.validate_document(file_bytes, filename)
+                    if not validation.is_valid:
+                        results.append({
+                            "filename": filename,
+                            "doc_type": "unknown",
+                            "status": "failed",
+                            "error": f"Validation failed: {validation.instruction}"
+                        })
+                        failed_count += 1
+                        continue
+
+                    # 2. Extract images and text for ALL pages
+                    img_list, _ = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
+                    
+                    # 3. Dynamic Page-by-Page Classification & Grouping
+                    doc_groups = [] # List of {type: str, pages: List[int], images: List[bytes], text: str}
+                    current_group = None
+
+                    for i, img in enumerate(img_list):
+                        # Get OCR text for this specific page
+                        page_text = await ProcessingService.run_ocr(img)
+                        
+                        # Identify type of THIS page
+                        page_type = await ProcessingService.classify_document(page_text)
+                        
+                        # SKIP UNKNOWN PAGES (Noise, blank pages, instructions, etc.)
+                        if page_type == "unknown":
+                            logger.info(f"Skipping page {i+1} of {filename}: Content not recognized as academic record.")
+                            continue
+
+                        print(f"\n[TERMINAL] OCR TEXT - PAGE {i+1} of {filename}:\n{page_text[:1000]}...")
+
+                        # Grouping logic: Certificates and Marksheets (Evaluation Reports) are usually handled as single documents
+                        # unless they are multi-page transcripts.
+                        is_new_group = False
+                        if not current_group:
+                            is_new_group = True
+                        elif current_group['type'] != page_type:
+                            is_new_group = True
+                        elif page_type in ['certificate', 'marksheet']:
+                            # Even if same type, we often want to split separate certificates/reports
+                            # especially if a strong trigger like "Evaluation Report" or "Certificate No" is present
+                            if "evaluation report" in page_text.lower() or "certificate" in page_text.lower():
+                                is_new_group = True
+
+                        if is_new_group:
+                            current_group = {
+                                'type': page_type,
+                                'pages': [i],
+                                'images': [img],
+                                'text': page_text
+                            }
+                            doc_groups.append(current_group)
+                        else:
+                            current_group['pages'].append(i)
+                            current_group['images'].append(img)
+                            current_group['text'] += "\n\n" + page_text
+
+                    # 4. Process each detected sub-document group
+                    for idx, group in enumerate(doc_groups):
+                        doc_type = group['type']
+                        ocr_text = group['text']
+                        images = group['images']
+                        group_name = f"{filename} (Part {idx+1})" if len(doc_groups) > 1 else filename
+
+                        logger.info(f"Extracting {doc_type} from {group_name}...")
+
+                        structured_data = None
+                        try:
+                            if doc_type == "marksheet":
+                                structured_data = await ProcessingService.extract_with_ai(images, ocr_text)
+                            elif doc_type == "transcript":
+                                structured_data = await ProcessingService.extract_transcript_with_ai(images, ocr_text)
+                            elif doc_type == "certificate":
+                                structured_data = await ProcessingService.extract_certificate_with_ai(images, ocr_text)
+                            else:
+                                raise ValueError("Unknown document type")
+
+                            # TERMINAL LOGGING OF EXTRACTED DATA
+                            print(f"\n[TERMINAL] EXTRACTED JSON - {group_name} [{doc_type.upper()}]:")
+                            print(json.dumps(structured_data, indent=2))
+
+                            # 5. Generate Hash for Manual Anchoring
+                            ledger_hash = await ProcessingService.generate_ledger_hash(structured_data, doc_type)
+                            
+                            results.append({
+                                "filename": group_name,
+                                "doc_type": doc_type,
+                                "status": "success",
+                                "data": structured_data,
+                                "ledger_hash": ledger_hash
+                            })
+                            processed_count += 1
+
+                        except Exception as e:
+                            logger.error(f"Error in group {idx+1} of {filename}: {e}")
+                            results.append({
+                                "filename": group_name,
+                                "doc_type": doc_type,
+                                "status": "failed",
+                                "error": str(e)
+                            })
+                            failed_count += 1
+
+                except Exception as e:
+                    logger.error(f"Critical error processing {filename}: {e}")
+                    results.append({
+                        "filename": filename,
+                        "doc_type": "unknown",
+                        "status": "error",
+                        "error": str(e)
+                    })
+                    failed_count += 1
+
+            return {
+                "total_files": total_files,
+                "processed_files": processed_count,
+                "failed_files": failed_count,
+                "results": results
+            }
+
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
