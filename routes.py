@@ -20,7 +20,7 @@ async def validate_document(file: UploadFile = File()):
         logger.exception("Validation route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/marksheet_data_extraction", response_model=MarkSheetData)
+@router.post("/marksheet_data_extraction", response_model=MarkSheetData, response_model_exclude_none=True)
 async def extract_document(file: UploadFile = File()):
     """
     Step 2: Full Extraction pipeline
@@ -84,7 +84,7 @@ async def extract_document(file: UploadFile = File()):
         logger.exception("Extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/certificate", response_model=CertificateData)
+@router.post("/certificate", response_model=CertificateData, response_model_exclude_none=True)
 async def extract_certificate(file: UploadFile = File()):
     """
     Step 2: Certificate Extraction pipeline
@@ -143,7 +143,7 @@ async def extract_certificate(file: UploadFile = File()):
         logger.exception("Certificate extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/transcript", response_model=TranscriptData)
+@router.post("/transcript", response_model=TranscriptData, response_model_exclude_none=True)
 async def extract_transcript(file: UploadFile = File()):
     """
     Step 2: Transcript Extraction pipeline (Hierarchical)
@@ -206,7 +206,7 @@ async def extract_transcript(file: UploadFile = File()):
         logger.exception("Transcript extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/bulk_process_zip", response_model=BulkProcessingResponse)
+@router.post("/bulk_process_zip", response_model=BulkProcessingResponse, response_model_exclude_none=True)
 async def bulk_process_zip(file: UploadFile = File()):
     """
     Upload a ZIP of PDFs, unzip, classify, extract, and upload to ledger.
@@ -221,3 +221,18 @@ async def bulk_process_zip(file: UploadFile = File()):
     except Exception as e:
         logger.exception("Bulk ZIP processing failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/log_merkle")
+async def log_merkle(payload: dict):
+    """
+    Utility endpoint to log Merkle Root construction to the backend terminal.
+    """
+    root = payload.get("root")
+    count = payload.get("leaves_count")
+    print(f"\n" + "="*60)
+    print(f" [TERMINAL] MERKLE ROOT CONSTRUCTED")
+    print(f" ROOT:  {root}")
+    print(f" LEAVES: {count}")
+    print("="*60 + "\n")
+    logger.info(f"Merkle Root Constructed: {root} ({count} leaves)")
+    return {"status": "logged"}

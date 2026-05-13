@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import asyncio
 import httpx
 import base64
 import io
@@ -27,7 +28,7 @@ OCR_API_KEY = os.getenv("OCR_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
-LEDGER_API_URL = os.getenv("LEDGER_API_URL", "http://localhost:5000/api/v1/ledger/upload") # Placeholder
+# LEDGER_API_URL = os.getenv("LEDGER_API_URL", "http://localhost:5000/api/v1/ledger/upload") # Placeholder
 
 class ProcessingService:
     @staticmethod
@@ -102,19 +103,24 @@ class ProcessingService:
         """
         Builds a canonical JSON string for Marksheets.
         """
+        def clean(val):
+            if val is None or str(val).lower() == "none":
+                return ""
+            return str(val).strip()
+
         subjects = []
         for s in data.get("subjects", []):
             ordered_subject = OrderedDict([
-                ("code", str(s.get("code", ""))),
-                ("title", str(s.get("title", ""))),
-                ("credit_points", str(s.get("credit_points", "")))
+                ("code", clean(s.get("code"))),
+                ("title", clean(s.get("title"))),
+                ("credit_points", clean(s.get("credit_points")))
             ])
             subjects.append(ordered_subject)
 
         payload = OrderedDict([
-            ("registration_no", str(data.get("registration_no", ""))),
-            ("name", str(data.get("name", ""))),
-            ("gpa", str(data.get("gpa", ""))),
+            ("registration_no", clean(data.get("registration_no"))),
+            ("name", clean(data.get("name"))),
+            ("gpa", clean(data.get("gpa"))),
             ("subjects", subjects)
         ])
         return json.dumps(payload, separators=(',', ':'))
@@ -123,59 +129,108 @@ class ProcessingService:
     def build_transcript_canonical_payload(data: dict) -> str:
         """
         Builds a canonical JSON string for the nested transcript structure.
-        Ensures stable hashing through strict key ordering.
+        Omit missing or empty fields entirely to ensure no hardcoded data enters the hash.
         """
-        years = []
-        for y in data.get("years", []):
-            semesters = []
-            for s in y.get("semesters", []):
-                courses = []
-                for c in s.get("courses", []):
-                    courses.append(OrderedDict([
-                        ("course_number", str(c.get("course_number", ""))),
-                        ("title", str(c.get("title", ""))),
-                        ("credit_points", str(c.get("credit_points", "")))
-                    ]))
-                semesters.append(OrderedDict([
-                    ("semester", str(s.get("semester", ""))),
-                    ("gpa", str(s.get("gpa", ""))),
-                    ("cgpa", str(s.get("cgpa", ""))),
-                    ("courses", courses)
-                ]))
-            years.append(OrderedDict([
-                ("year", str(y.get("year", ""))),
-                ("semesters", semesters)
-            ]))
+        def clean(val):
+            if val is None or str(val).lower() == "none" or str(val).strip() == "":
+                return None
+            return str(val).strip()
 
-        payload = OrderedDict([
-            ("registration_no", str(data.get("registration_no", ""))),
-            ("name", str(data.get("name", ""))),
-            ("degree", str(data.get("degree", ""))),
-            ("admission_year", str(data.get("admission_year", ""))),
-            ("completion_year", str(data.get("completion_year", ""))),
-            ("ogpa", str(data.get("ogpa", ""))),
-            ("result", str(data.get("result", ""))),
-            ("class_division", str(data.get("class_division", ""))),
-            ("years", years)
-        ])
+        years = []
+        for y in data.get("years", []) or []:
+            semesters = []
+            for s in y.get("semesters", []) or []:
+                courses = []
+                for c in s.get("courses", []) or []:
+                    course_payload = OrderedDict()
+                    c_num = clean(c.get("course_number"))
+                    c_title = clean(c.get("title"))
+                    c_points = clean(c.get("credit_points"))
+                    
+                    if c_num: course_payload["course_number"] = c_num
+                    if c_title: course_payload["title"] = c_title
+                    if c_points: course_payload["credit_points"] = c_points
+                    
+                    if course_payload:
+                        courses.append(course_payload)
+                
+                sem_payload = OrderedDict()
+                s_name = clean(s.get("semester"))
+                s_gpa = clean(s.get("gpa"))
+                s_cgpa = clean(s.get("cgpa"))
+                
+                if s_name: sem_payload["semester"] = s_name
+                if s_gpa: sem_payload["gpa"] = s_gpa
+                if s_cgpa: sem_payload["cgpa"] = s_cgpa
+                if courses: sem_payload["courses"] = courses
+                
+                if sem_payload:
+                    semesters.append(sem_payload)
+            
+            year_payload = OrderedDict()
+            y_name = clean(y.get("year"))
+            if y_name: year_payload["year"] = y_name
+            if semesters: year_payload["semesters"] = semesters
+            
+            if year_payload:
+                years.append(year_payload)
+        
+        top_courses = []
+        for c in data.get("courses", []) or []:
+            course_payload = OrderedDict()
+            c_num = clean(c.get("course_number"))
+            c_title = clean(c.get("title"))
+            c_points = clean(c.get("credit_points"))
+            if c_num: course_payload["course_number"] = c_num
+            if c_title: course_payload["title"] = c_title
+            if c_points: course_payload["credit_points"] = c_points
+            if course_payload:
+                top_courses.append(course_payload)
+
+        payload = OrderedDict()
+        reg_no = clean(data.get("registration_no"))
+        name = clean(data.get("name"))
+        degree = clean(data.get("degree"))
+        adm_year = clean(data.get("admission_year"))
+        comp_year = clean(data.get("completion_year"))
+        ogpa = clean(data.get("ogpa"))
+        result = clean(data.get("result"))
+        class_div = clean(data.get("class_division"))
+
+        if reg_no: payload["registration_no"] = reg_no
+        if name: payload["name"] = name
+        if degree: payload["degree"] = degree
+        if adm_year: payload["admission_year"] = adm_year
+        if comp_year: payload["completion_year"] = comp_year
+        if ogpa: payload["ogpa"] = ogpa
+        if result: payload["result"] = result
+        if class_div: payload["class_division"] = class_div
+        if years: payload["years"] = years
+        if top_courses: payload["courses"] = top_courses
+
         return json.dumps(payload, separators=(',', ':'))
 
     @staticmethod
     def build_certificate_canonical_payload(data: dict) -> str:
         """
         Builds a canonical JSON string for academic certificates.
+        Ensures strict parity with frontend hashing logic.
         """
+        def clean(val):
+            if val is None or str(val).lower() == "none":
+                return ""
+            return str(val).strip()
+
         payload = OrderedDict([
-            ("certificate_no", str(data.get("certificate_no", ""))),
-            ("no", str(data.get("no", ""))),
-            # ("university", str(data.get("university", ""))),
-            ("name", str(data.get("name", ""))),
-            ("degree", str(data.get("degree", ""))),
-            ("branch", str(data.get("branch", ""))),
-            ("ogpa", str(data.get("ogpa", ""))),
-            ("year", str(data.get("year", ""))),
-            ("date", str(data.get("date", ""))),
-            ("class_division", str(data.get("class_division", "")))
+            ("certificate_no", clean(data.get("certificate_no"))),
+            ("no", clean(data.get("no"))),
+            ("name", clean(data.get("name"))),
+            ("degree", clean(data.get("degree"))),
+            ("branch", clean(data.get("branch"))),
+            ("ogpa", clean(data.get("ogpa"))),
+            ("year", clean(data.get("year"))),
+            ("date", clean(data.get("date"))),
+            ("class_division", clean(data.get("class_division")))
         ])
         return json.dumps(payload, separators=(',', ':'))
 
@@ -212,6 +267,29 @@ class ProcessingService:
             hash_bytes = Web3.keccak(text=text)
             return Web3.to_hex(hash_bytes)
         return await anyio.to_thread.run_sync(sync_hash)
+
+    @staticmethod
+    async def generate_ledger_hash(structured_data: dict, doc_type: str) -> str:
+        """
+        Routing logic to build the canonical payload and hash it.
+        This hash is used for manual anchoring.
+        """
+        try:
+            if doc_type == "marksheet":
+                payload = ProcessingService.build_canonical_payload(structured_data)
+            elif doc_type == "transcript":
+                payload = ProcessingService.build_transcript_canonical_payload(structured_data)
+            elif doc_type == "certificate":
+                payload = ProcessingService.build_certificate_canonical_payload(structured_data)
+            else:
+                return "0x" + "0" * 64
+
+            ledger_hash = await ProcessingService.generate_keccak256(payload)
+            logger.info(f"Generated Ledger Hash for manual anchoring ({doc_type}): {ledger_hash}")
+            return ledger_hash
+        except Exception as e:
+            logger.error(f"Hash generation failed for {doc_type}: {e}")
+            return "0x" + "0" * 64
 
     @staticmethod
     async def generate_with_cerebras(prompt: str):
@@ -283,9 +361,9 @@ class ProcessingService:
         # Priorities: Evaluation Report -> Marksheet (Strongest)
         # Semester presence -> Transcript
         # Degree Certificate -> Certificate
-        transcript_triggers = ["semester", "transcript", "academic record", "consolidated marks"]
-        marksheet_triggers = ["marksheet", "evaluation report", "statement of marks", "grade card", "memo of marks"]
-        certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate"]
+        transcript_triggers = ["semester", "sem ", "transcript", "academic record", "consolidated marks", "consolidated statement"]
+        marksheet_triggers = ["marksheet", "evaluation report", "statement of marks", "grade card", "memo of marks", "result", "grade sheet", "provisional marks"]
+        certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate", "degree of"]
 
         if "evaluation report" in text_lower:
             return "marksheet"
@@ -329,7 +407,7 @@ class ProcessingService:
             return "unknown"
 
     @staticmethod
-    async def gemini_generate_with_retry(prompt: str, schema, images: list = None, retries: int = 3):
+    async def gemini_generate_with_retry(prompt: str, schema, images: list = None, retries: int = 5):
         """Helper to call Gemini with exponential backoff on 503 errors. Supports Multi-modal (Vision)."""
         from google import genai
         from google.genai import types
@@ -391,6 +469,8 @@ JSON FORMAT:
     {{
       "code": "...", 
       "title": "...", 
+      "credits": "...",
+      "grade": "...",
       "credit_points": "..."
     }}
   ]
@@ -427,23 +507,25 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 4. Format Year and Semester as ALL CAPS WORDS.
 
 #### FIELD EXTRACTION RULES ####
-1. **Header & Summary**: Extract `registration_no`, `name`, `degree`, `admission_year`, `completion_year`, `ogpa`, `result`, and `class_division` (Abstract section).
-2. **Vertical Row-Shifting (CRITICAL)**: 
+1. **Omit Missing Data**: If a Year, Semester, GPA, CGPA, or Course is NOT found, OMIT the key entirely. DO NOT hardcode or "force" a Year/Semester structure if it's not explicitly in the text.
+2. **Hierarchy vs Flat List**: 
+   - If the transcript has headings like "FIRST SEMESTER", group courses into `years` and `semesters`.
+   - If the transcript is a flat list of courses (common in consolidated transcripts), extract them into the top-level `courses` list.
+3. **Header & Summary**: Extract `registration_no`, `name`, `degree`, `admission_year`, `completion_year`, `ogpa`, `result`, and `class_division`.
+4. **Vertical Row-Shifting (CRITICAL)**: 
    - Some semesters use "One-Row Up Offset". 
    - **Detection**: Look at the line containing the Semester Title (e.g., "THIRD SEMESTER 7.8").
      - If the Semester Title line ends with a number (e.g., "7.8" or "7.1"), an **OFFSET** is active for that entire semester.
-     - **Mapping Rule**: The credit points for Course N are found on the line of Course N-1 (or the Semester Header for the first course).
-     - Example (3rd Sem): Header has "7.8" -> `Agron.3.4` gets `7.8`. `Agron.3.4` line has "15.2" -> `Agron.3.5` gets `15.2`.
+     - **Mapping Rule**: The credit points for Course N are found on the line of Course N-1.
    - If no number is in the header, use "Same-Line Alignment".
-3. **Orphan Lines**: If a course has no numeric points on its own line or the previous line, look at the nearest orphan line (line with only numbers).
-4. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points (and no shifted points), set "credit_points" to '---'.
-5. **GPA/CGPA**: Extract "G.P.A." and "C.G.P.A." for each semester.
+5. **Orphan Lines**: If a course has no numeric points on its own line or the previous line, look at the nearest orphan line.
+6. **Non-Credit Courses**: For courses with grade 'S' or missing numeric points, set "credit_points" to '---'.
+7. **GPA/CGPA**: Extract "G.P.A." and "C.G.P.A." ONLY if explicitly printed.
 
 #### FORMATTING ####
-- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
-- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
-- "year": MUST BE "FIRST YEAR", "SECOND YEAR", etc.
-- "semester": MUST BE "FIRST SEMESTER", "SECOND SEMESTER", etc.
+- If grouping: Use "FIRST YEAR", "FIRST SEMESTER", etc. in UPPERCASE.
+- Roman Numerals: Convert numerical suffixes in titles: "Crop Production-1" -> "Crop Production-I".
+- Course Codes: Remove all spaces: "Agron. 1.1" -> "Agron.1.1".
 
 #### CHARACTER ACCURACY & TITLES ####
 1. ROMAN NUMERALS: OCR misreads "1", "l", "|" as "I" and "ll", "11", "IT" as "II".
@@ -474,7 +556,13 @@ JSON STRUCTURE:
             "gpa": "...",
             "cgpa": "...",
             "courses": [
-              {{ "course_number": "...", "title": "...", "credit_points": "..." }}
+              {{ 
+                "course_number": "...", 
+                "title": "...", 
+                "credits": "...",
+                "grade": "...",
+                "credit_points": "..." 
+              }}
             ]
         }}
       ]
@@ -535,28 +623,6 @@ Return ONLY JSON.
             logger.error(f"Certificate Extraction failed: {e}")
             raise e
 
-    @staticmethod
-    async def generate_ledger_hash(data: dict, doc_type: str):
-        """
-        Generates a canonical hash for manual ledger anchoring.
-        """
-        try:
-            # 1. Build canonical payload and generate hash
-            if doc_type == "marksheet":
-                payload = ProcessingService.build_canonical_payload(data)
-            elif doc_type == "transcript":
-                payload = ProcessingService.build_transcript_canonical_payload(data)
-            elif doc_type == "certificate":
-                payload = ProcessingService.build_certificate_canonical_payload(data)
-            else:
-                payload = json.dumps(data)
-
-            ledger_hash = await ProcessingService.generate_keccak256(payload)
-            logger.info(f"Generated Ledger Hash for manual anchoring ({doc_type}): {ledger_hash}")
-            return ledger_hash
-        except Exception as e:
-            logger.error(f"Hash generation failed: {e}")
-            return None
 
     @staticmethod
     async def process_zip(zip_bytes: bytes):
@@ -610,35 +676,66 @@ Return ONLY JSON.
                     # 2. Extract images and text for ALL pages
                     img_list, _ = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
                     
-                    # 3. Dynamic Page-by-Page Classification & Grouping
-                    doc_groups = [] # List of {type: str, pages: List[int], images: List[bytes], text: str}
-                    current_group = None
+                    # 3. Parallel OCR & Classification
+                    # Limit concurrency to 10 to avoid rate limits/overwhelming system
+                    semaphore = asyncio.Semaphore(12)
+                    
+                    async def process_page(idx, img):
+                        async with semaphore:
+                            text = await ProcessingService.run_ocr(img)
+                            doc_type = await ProcessingService.classify_document(text)
+                            return idx, text, doc_type, img
 
-                    for i, img in enumerate(img_list):
-                        # Get OCR text for this specific page
-                        page_text = await ProcessingService.run_ocr(img)
+                    tasks = [process_page(i, img) for i, img in enumerate(img_list)]
+                    page_results = await asyncio.gather(*tasks)
+                    # Sort results by index to maintain order
+                    page_results.sort(key=lambda x: x[0])
+
+                    # 4. Dynamic Grouping Logic
+                    doc_groups = []
+                    current_group = None
+                    force_transcript = False
+
+                    for i, text, page_type, img in page_results:
+                        # 1. Text-based keyword overrides (Highest Priority)
+                        clean_text = text.lower()
+                        is_explicit_marksheet = "evaluation report" in clean_text or "marksheet" in clean_text
                         
-                        # Identify type of THIS page
-                        page_type = await ProcessingService.classify_document(page_text)
+                        if is_explicit_marksheet:
+                            page_type = "marksheet"
+                            force_transcript = False # Kill any pending force immediately
                         
-                        # SKIP UNKNOWN PAGES (Noise, blank pages, instructions, etc.)
+                        # 2. Apply Heuristic for transcript
+                        if force_transcript and not is_explicit_marksheet:
+                            # Only force if it's not a certificate
+                            if page_type != "certificate":
+                                page_type = "transcript"
+                                logger.info(f"Page {i+1}: Forced to TRANSCRIPT due to previous page heuristic.")
+                            force_transcript = False
+                        
+                        # 3. Set flag for next iteration (Only if this page is a transcript)
+                        if page_type == "transcript" or "transcript of academic record" in clean_text:
+                            force_transcript = True
+
+                        # 4. Final Rule: "If you don't find the word transcript then please don't give result in transcript."
+                        if page_type == "transcript" and "transcript" not in clean_text:
+                            page_type = "marksheet"
+                            force_transcript = False
+
+                        # SKIP UNKNOWN PAGES (except if forced)
                         if page_type == "unknown":
-                            logger.info(f"Skipping page {i+1} of {filename}: Content not recognized as academic record.")
+                            logger.info(f"Skipping page {i+1} of {filename}: Content not recognized.")
                             continue
 
-                        print(f"\n[TERMINAL] OCR TEXT - PAGE {i+1} of {filename}:\n{page_text[:1000]}...")
+                        print(f"\n[TERMINAL] OCR TEXT - PAGE {i+1} of {filename}:\n{text[:500]}...")
 
-                        # Grouping logic: Certificates and Marksheets (Evaluation Reports) are usually handled as single documents
-                        # unless they are multi-page transcripts.
                         is_new_group = False
                         if not current_group:
                             is_new_group = True
                         elif current_group['type'] != page_type:
                             is_new_group = True
                         elif page_type in ['certificate', 'marksheet']:
-                            # Even if same type, we often want to split separate certificates/reports
-                            # especially if a strong trigger like "Evaluation Report" or "Certificate No" is present
-                            if "evaluation report" in page_text.lower() or "certificate" in page_text.lower():
+                            if "evaluation report" in text.lower() or "certificate" in text.lower():
                                 is_new_group = True
 
                         if is_new_group:
@@ -646,15 +743,25 @@ Return ONLY JSON.
                                 'type': page_type,
                                 'pages': [i],
                                 'images': [img],
-                                'text': page_text
+                                'text': text
                             }
                             doc_groups.append(current_group)
                         else:
                             current_group['pages'].append(i)
                             current_group['images'].append(img)
-                            current_group['text'] += "\n\n" + page_text
+                            current_group['text'] += "\n\n" + text
 
                     # 4. Process each detected sub-document group
+                    if not doc_groups:
+                        results.append({
+                            "filename": filename,
+                            "doc_type": "unknown",
+                            "status": "failed",
+                            "error": "No academic record identified (Marksheet/Certificate/Transcript) in this PDF."
+                        })
+                        failed_count += 1
+                        continue
+
                     for idx, group in enumerate(doc_groups):
                         doc_type = group['type']
                         ocr_text = group['text']
@@ -674,10 +781,6 @@ Return ONLY JSON.
                             else:
                                 raise ValueError("Unknown document type")
 
-                            # TERMINAL LOGGING OF EXTRACTED DATA
-                            print(f"\n[TERMINAL] EXTRACTED JSON - {group_name} [{doc_type.upper()}]:")
-                            print(json.dumps(structured_data, indent=2))
-
                             # 5. Generate Hash for Manual Anchoring
                             ledger_hash = await ProcessingService.generate_ledger_hash(structured_data, doc_type)
                             
@@ -686,6 +789,7 @@ Return ONLY JSON.
                                 "doc_type": doc_type,
                                 "status": "success",
                                 "data": structured_data,
+                                "raw_text": ocr_text,
                                 "ledger_hash": ledger_hash
                             })
                             processed_count += 1

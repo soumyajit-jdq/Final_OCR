@@ -5,6 +5,8 @@ class Subject(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
     code: str = Field(..., description="Course code")
     title: str = Field(..., description="Course title")
+    credits: Optional[str] = Field(None, description="Credit Hours")
+    grade: Optional[str] = Field(None, description="Grade Points")
     credit_points: str = Field(..., description="Total Credit Points")
 
 class MarkSheetData(BaseModel):
@@ -32,6 +34,8 @@ class Course(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
     course_number: str = Field(..., description="Course/Subject Number")
     title: str = Field(..., description="Course title")
+    credits: Optional[str] = Field(None, description="Credit Hours")
+    grade: Optional[str] = Field(None, description="Grade Points")
     credit_points: str = Field(..., description="Total Credit Points")
 
     @field_validator('course_number')
@@ -51,7 +55,7 @@ class SemesterData(BaseModel):
 class YearData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
     year: str = Field(..., description="Year level in UPPERCASE words")
-    semesters: List[SemesterData]
+    semesters: Optional[List[SemesterData]] = Field(None, description="List of semesters in this year")
 
 class TranscriptData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -63,7 +67,8 @@ class TranscriptData(BaseModel):
     ogpa: Optional[str] = Field(None, description="Overall Grade Point Average")
     result: Optional[str] = Field(None, description="Final Result")
     class_division: Optional[str] = Field(None, description="Class/Division")
-    years: List[YearData]
+    years: Optional[List[YearData]] = Field(None, description="Academic history organized by year")
+    courses: Optional[List[Course]] = Field(None, description="Flat list of courses (use if no year/semester headings exist)")
 
 class ValidationResponse(BaseModel):
     is_valid: bool = Field(..., description="Whether the document meets quality standards")
@@ -75,8 +80,9 @@ class ProcessingResult(BaseModel):
     doc_type: str
     status: str
     data: Optional[dict] = None
+    raw_text: Optional[str] = None
     error: Optional[str] = None
-    # ledger_hash: Optional[str] = None
+    ledger_hash: Optional[str] = None
 
 class BulkProcessingResponse(BaseModel):
     total_files: int
