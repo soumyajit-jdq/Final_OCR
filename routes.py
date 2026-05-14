@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi.responses import StreamingResponse
 from service import ProcessingService
 from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData, BulkProcessingResponse
 import logging
@@ -162,8 +163,8 @@ async def extract_transcript(file: UploadFile = File()):
         processing_image = file_bytes
         
         if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
-            logger.info("Extracting data from Transcript PDF (up to 10 pages)")
-            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=10)
+            logger.info("Extracting data from Transcript PDF (up to 50 pages)")
+            img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
             if img_list:
                 processing_image = img_list
                 ocr_text = raw_text
@@ -206,18 +207,20 @@ async def extract_transcript(file: UploadFile = File()):
         logger.exception("Transcript extraction route failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/bulk_process_zip", response_model=BulkProcessingResponse, response_model_exclude_none=True)
+@router.post("/bulk_process_zip")
 async def bulk_process_zip(file: UploadFile = File()):
     """
-    Upload a ZIP of PDFs, unzip, classify, extract, and upload to ledger.
+    Upload a ZIP of PDFs and STREAM the results back in real-time.
     """
     if not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only ZIP files are supported.")
     
     try:
         zip_bytes = await file.read()
-        results = await ProcessingService.process_zip(zip_bytes)
-        return results
+        return StreamingResponse(
+            ProcessingService.bulk_process_zip_streaming(zip_bytes),
+            media_type="application/x-ndjson"
+        )
     except Exception as e:
         logger.exception("Bulk ZIP processing failed")
         raise HTTPException(status_code=500, detail=str(e))
