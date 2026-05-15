@@ -83,36 +83,42 @@ class ProcessingService:
         compressed_bytes = await ProcessingService.compress_image(image_bytes)
         url = "https://api.ocr.space/parse/image"
         
-        last_error = "Unknown Error"
-        for api_key in OCR_API_KEYS:
-            # Prepare multipart/form-data
+        async def perform_request(client, api_key):
             files = {"file": ("image.jpg", compressed_bytes, "image/jpeg")}
             data = {"apikey": api_key, "language": "eng", "isTable": True, "OCREngine": 2}
-            
-            async with httpx.AsyncClient() as client:
-                try:
-                    logger.info(f"Attempting OCR with key: {api_key[:5]}...")
-                    response = await client.post(url, files=files, data=data, timeout=60)
-                    
-                    if response.status_code == 403:
-                        logger.warning(f"OCR Key {api_key[:5]} returned 403 Forbidden. Trying next key...")
-                        last_error = "403 Forbidden"
-                        continue
+            logger.info(f"Attempting OCR with key: {api_key[:5]}...")
+            return await client.post(url, files=files, data=data, timeout=60)
 
-                    result = response.json()
-                    if result.get("OCRExitCode") != 1:
-                        err = result.get('ErrorMessage')
-                        logger.warning(f"OCR Key {api_key[:5]} failed: {err}")
-                        last_error = err
-                        continue
-                        
-                    return result["ParsedResults"][0]["ParsedText"]
-                except Exception as e:
-                    logger.error(f"OCR Error with key {api_key[:5]}: {e}")
-                    last_error = str(e)
+        last_error = "Unknown Error"
+        for api_key in OCR_API_KEYS:
+            try:
+                # Use provided client or fallback to local one
+                if hasattr(ProcessingService, '_shared_client') and ProcessingService._shared_client:
+                    response = await perform_request(ProcessingService._shared_client, api_key)
+                else:
+                    async with httpx.AsyncClient() as client:
+                        response = await perform_request(client, api_key)
+                
+                if response.status_code == 403:
+                    logger.warning(f"OCR Key {api_key[:5]} returned 403 Forbidden. Trying next key...")
+                    last_error = "403 Forbidden"
                     continue
+
+                result = response.json()
+                if result.get("OCRExitCode") != 1:
+                    err = result.get('ErrorMessage')
+                    logger.warning(f"OCR Key {api_key[:5]} failed: {err}")
+                    last_error = err
+                    continue
+                    
+                return result["ParsedResults"][0]["ParsedText"]
+            except Exception as e:
+                logger.error(f"OCR Error with key {api_key[:5]}: {e}")
+                last_error = str(e)
+                continue
         
         return f"OCR Failed: {last_error}"
+
 
     @staticmethod
     def encode_image(image_bytes):
@@ -336,10 +342,17 @@ class ProcessingService:
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0
             }
-            async with httpx.AsyncClient() as client:
-                resp_1_raw = await client.post(url, headers=headers, json=payload_1, timeout=30)
-                resp_1 = resp_1_raw.json()
-                
+            async def perform_request(client):
+                return await client.post(url, headers=headers, json=payload_1, timeout=30)
+
+            if hasattr(ProcessingService, '_shared_client') and ProcessingService._shared_client:
+                resp_1_raw = await perform_request(ProcessingService._shared_client)
+            else:
+                async with httpx.AsyncClient() as client:
+                    resp_1_raw = await perform_request(client)
+            
+            resp_1 = resp_1_raw.json()
+            
             if "choices" not in resp_1:
                 return None
             initial_json = resp_1["choices"][0]["message"]["content"]
@@ -360,9 +373,16 @@ class ProcessingService:
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0
             }
-            async with httpx.AsyncClient() as client:
-                resp_2_raw = await client.post(url, headers=headers, json=payload_2, timeout=30)
-                resp_2 = resp_2_raw.json()
+            async def perform_correction(client):
+                return await client.post(url, headers=headers, json=payload_2, timeout=30)
+
+            if hasattr(ProcessingService, '_shared_client') and ProcessingService._shared_client:
+                resp_2_raw = await perform_correction(ProcessingService._shared_client)
+            else:
+                async with httpx.AsyncClient() as client:
+                    resp_2_raw = await perform_correction(client)
+            
+            resp_2 = resp_2_raw.json()
             
             if "choices" in resp_2:
                 corrected_content = resp_2["choices"][0]["message"]["content"]
@@ -417,15 +437,22 @@ class ProcessingService:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0
             }
-            async with httpx.AsyncClient() as client:
-                res = await client.post(url, headers=headers, json=payload, timeout=30)
-                content = res.json()["choices"][0]["message"]["content"].lower().strip()
-                logger.info(f"AI Classification Raw Result: {content}")
+            async def perform_classify(client):
+                return await client.post(url, headers=headers, json=payload, timeout=30)
+
+            if hasattr(ProcessingService, '_shared_client') and ProcessingService._shared_client:
+                res = await perform_classify(ProcessingService._shared_client)
+            else:
+                async with httpx.AsyncClient() as client:
+                    res = await perform_classify(client)
+
+            content = res.json()["choices"][0]["message"]["content"].lower().strip()
+            logger.info(f"AI Classification Raw Result: {content}")
                 
-                if "marksheet" in content: return "marksheet"
-                if "certificate" in content: return "certificate"
-                if "transcript" in content: return "transcript"
-                return "unknown"
+            if "marksheet" in content: return "marksheet"
+            if "certificate" in content: return "certificate"
+            if "transcript" in content: return "transcript"
+            return "unknown"
         except Exception as e:
             logger.error(f"Document classification failed: {e}")
             return "unknown"
@@ -686,150 +713,158 @@ Return ONLY JSON.
             
             await asyncio.sleep(0.1) 
 
-            pdf_semaphore = asyncio.Semaphore(3)
-            page_semaphore = asyncio.Semaphore(12)
-
-            async def process_single_pdf(pdf_path):
-                filename = os.path.basename(pdf_path)
-                async with pdf_semaphore:
-                    logger.info(f"--- START PROCESSING: {filename} ---")
-                    try:
-                        with open(pdf_path, "rb") as f:
-                            file_bytes = f.read()
-
-                        validation = await ProcessingService.validate_document(file_bytes, filename)
-                        if not validation.is_valid:
-                            yield json.dumps({"type": "result", "data": {
-                                "filename": filename,
-                                "doc_type": "unknown",
-                                "status": "failed",
-                                "error": f"Validation failed: {validation.instruction}"
-                            }}) + "\n"
-                            return
-
-                        img_list, _ = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
-                        
-                        async def process_page(idx, img):
-                            async with page_semaphore:
-                                text = await ProcessingService.run_ocr(img)
-                                doc_type = await ProcessingService.classify_document(text)
-                                return idx, text, doc_type, img
-
-                        tasks = [process_page(i, img) for i, img in enumerate(img_list)]
-                        page_results = await asyncio.gather(*tasks)
-                        page_results.sort(key=lambda x: x[0])
-
-                        doc_groups = []
-                        current_group = None
-                        force_transcript = False
-
-                        for i, text, page_type, img in page_results:
-                            clean_text = text.lower()
-                            
-                            # Detection flags
-                            is_explicit_marksheet = "evaluation report" in clean_text or "marksheet" in clean_text or "statement of marks" in clean_text
-                            is_explicit_certificate = "degree certificate" in clean_text or "conferred upon" in clean_text or "passing certificate" in clean_text
-                            is_explicit_transcript = "transcript" in clean_text or "academic record" in clean_text or "consolidated statement" in clean_text
-                            
-                            # Update page_type based on explicit headers first
-                            if is_explicit_marksheet:
-                                page_type = "marksheet"
-                                force_transcript = False
-                            elif is_explicit_certificate:
-                                page_type = "certificate"
-                                force_transcript = False
-                            elif is_explicit_transcript:
-                                page_type = "transcript"
-                                force_transcript = True
-                            
-                            # Sticky transcript logic: If previous page was transcript, continue unless a new doc starts
-                            if force_transcript:
-                                if not is_explicit_marksheet and not is_explicit_certificate:
-                                    page_type = "transcript"
-                                    # We keep force_transcript = True for the next page
-                            
-                            if page_type == "unknown":
-                                continue
-
-                            print(f"\n[TERMINAL] OCR TEXT - PAGE {i+1} of {filename}:\n{text[:500]}...")
-
-                            is_new_group = False
-                            if not current_group:
-                                is_new_group = True
-                            elif current_group['type'] != page_type:
-                                is_new_group = True
-                            elif page_type in ['certificate', 'marksheet']:
-                                if "evaluation report" in text.lower() or "certificate" in text.lower():
-                                    is_new_group = True
-
-                            if is_new_group:
-                                current_group = {'type': page_type, 'pages': [i], 'images': [img], 'text': text}
-                                doc_groups.append(current_group)
-                            else:
-                                current_group['pages'].append(i)
-                                current_group['images'].append(img)
-                                current_group['text'] += "\n\n" + text
-
-                        if not doc_groups:
-                            yield json.dumps({"type": "result", "data": {"filename": filename, "doc_type": "unknown", "status": "failed", "error": "No records found"}}) + "\n"
-                            return
-
-                        for idx, group in enumerate(doc_groups):
-                            doc_type = group['type']
-                            ocr_text = group['text']
-                            images = group['images']
-                            group_name = f"{filename} (Part {idx+1})" if len(doc_groups) > 1 else filename
-
-                            try:
-                                if doc_type == "marksheet":
-                                    structured_data = await ProcessingService.extract_with_ai(images, ocr_text)
-                                elif doc_type == "transcript":
-                                    structured_data = await ProcessingService.extract_transcript_with_ai(images, ocr_text)
-                                elif doc_type == "certificate":
-                                    structured_data = await ProcessingService.extract_certificate_with_ai(images, ocr_text)
-                                else:
-                                    raise ValueError("Unknown document type")
-
-                                ledger_hash = await ProcessingService.generate_ledger_hash(structured_data, doc_type)
-                                yield json.dumps({"type": "result", "data": {
-                                    "filename": group_name,
-                                    "doc_type": doc_type,
-                                    "status": "success",
-                                    "data": structured_data,
-                                    "raw_text": ocr_text,
-                                    "ledger_hash": ledger_hash
-                                }}) + "\n"
-                                await asyncio.sleep(0.01)
-
-                            except Exception as e:
-                                yield json.dumps({"type": "result", "data": {"filename": group_name, "doc_type": doc_type, "status": "failed", "error": str(e)}}) + "\n"
-
-                    except Exception as e:
-                        yield json.dumps({"type": "result", "data": {"filename": filename, "doc_type": "unknown", "status": "error", "error": str(e)}}) + "\n"
-
-            # We use a queue-based approach to yield results as they happen across all PDFs
-            results_queue = asyncio.Queue()
+            # Optimization: Increased concurrency for higher throughput
+            pdf_semaphore = asyncio.Semaphore(10)
+            page_semaphore = asyncio.Semaphore(20)
             
-            async def wrapped_process(path):
-                async for res_line in process_single_pdf(path):
-                    await results_queue.put(res_line)
+            # Optimization: Shared HTTP client to avoid TCP/SSL handshake overhead
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                ProcessingService._shared_client = client
+
+                async def process_single_pdf(pdf_path):
+                    filename = os.path.basename(pdf_path)
+                    async with pdf_semaphore:
+                        logger.info(f"--- START PROCESSING: {filename} ---")
+                        try:
+                            with open(pdf_path, "rb") as f:
+                                file_bytes = f.read()
+
+                            validation = await ProcessingService.validate_document(file_bytes, filename)
+                            if not validation.is_valid:
+                                yield json.dumps({"type": "result", "data": {
+                                    "filename": filename,
+                                    "doc_type": "unknown",
+                                    "status": "failed",
+                                    "error": f"Validation failed: {validation.instruction}"
+                                }}) + "\n"
+                                return
+
+                            img_list, _ = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
+                        
+                            async def process_page(idx, img):
+                                async with page_semaphore:
+                                    text = await ProcessingService.run_ocr(img)
+                                    doc_type = await ProcessingService.classify_document(text)
+                                    return idx, text, doc_type, img
+
+                            tasks = [process_page(i, img) for i, img in enumerate(img_list)]
+                            page_results = await asyncio.gather(*tasks)
+                            page_results.sort(key=lambda x: x[0])
+
+                            doc_groups = []
+                            current_group = None
+                            force_transcript = False
+
+                            for i, text, page_type, img in page_results:
+                                clean_text = text.lower()
+                            
+                                # Detection flags
+                                is_explicit_marksheet = "evaluation report" in clean_text or "marksheet" in clean_text or "statement of marks" in clean_text
+                                is_explicit_certificate = "degree certificate" in clean_text or "conferred upon" in clean_text or "passing certificate" in clean_text
+                                is_explicit_transcript = "transcript" in clean_text or "academic record" in clean_text or "consolidated statement" in clean_text
+                            
+                                # Update page_type based on explicit headers first
+                                if is_explicit_marksheet:
+                                    page_type = "marksheet"
+                                    force_transcript = False
+                                elif is_explicit_certificate:
+                                    page_type = "certificate"
+                                    force_transcript = False
+                                elif is_explicit_transcript:
+                                    page_type = "transcript"
+                                    force_transcript = True
+                            
+                                # Sticky transcript logic: If previous page was transcript, continue unless a new doc starts
+                                if force_transcript:
+                                    if not is_explicit_marksheet and not is_explicit_certificate:
+                                        page_type = "transcript"
+                                        # We keep force_transcript = True for the next page
+                            
+                                if page_type == "unknown":
+                                    continue
+
+                                print(f"\n[TERMINAL] OCR TEXT - PAGE {i+1} of {filename}:\n{text[:500]}...")
+
+                                is_new_group = False
+                                if not current_group:
+                                    is_new_group = True
+                                elif current_group['type'] != page_type:
+                                    is_new_group = True
+                                elif page_type in ['certificate', 'marksheet']:
+                                    if "evaluation report" in text.lower() or "certificate" in text.lower():
+                                        is_new_group = True
+
+                                if is_new_group:
+                                    current_group = {'type': page_type, 'pages': [i], 'images': [img], 'text': text}
+                                    doc_groups.append(current_group)
+                                else:
+                                    current_group['pages'].append(i)
+                                    current_group['images'].append(img)
+                                    current_group['text'] += "\n\n" + text
+
+                            if not doc_groups:
+                                yield json.dumps({"type": "result", "data": {"filename": filename, "doc_type": "unknown", "status": "failed", "error": "No records found"}}) + "\n"
+                                return
+
+                            for idx, group in enumerate(doc_groups):
+                                doc_type = group['type']
+                                ocr_text = group['text']
+                                images = group['images']
+                                group_name = f"{filename} (Part {idx+1})" if len(doc_groups) > 1 else filename
+
+                                try:
+                                    if doc_type == "marksheet":
+                                        structured_data = await ProcessingService.extract_with_ai(images, ocr_text)
+                                    elif doc_type == "transcript":
+                                        structured_data = await ProcessingService.extract_transcript_with_ai(images, ocr_text)
+                                    elif doc_type == "certificate":
+                                        structured_data = await ProcessingService.extract_certificate_with_ai(images, ocr_text)
+                                    else:
+                                        raise ValueError("Unknown document type")
+
+                                    ledger_hash = await ProcessingService.generate_ledger_hash(structured_data, doc_type)
+                                    yield json.dumps({"type": "result", "data": {
+                                        "filename": group_name,
+                                        "doc_type": doc_type,
+                                        "status": "success",
+                                        "data": structured_data,
+                                        "raw_text": ocr_text,
+                                        "ledger_hash": ledger_hash
+                                    }}) + "\n"
+                                    await asyncio.sleep(0.01)
+
+                                except Exception as e:
+                                    yield json.dumps({"type": "result", "data": {"filename": group_name, "doc_type": doc_type, "status": "failed", "error": str(e)}}) + "\n"
+
+                        except Exception as e:
+                            yield json.dumps({"type": "result", "data": {"filename": filename, "doc_type": "unknown", "status": "error", "error": str(e)}}) + "\n"
+
+                # We use a queue-based approach to yield results as they happen across all PDFs
+                results_queue = asyncio.Queue()
+            
+                async def wrapped_process(path):
+                    async for res_line in process_single_pdf(path):
+                        await results_queue.put(res_line)
 
             # Start all tasks
-            processing_tasks = [asyncio.create_task(wrapped_process(path)) for path in pdf_files]
+                processing_tasks = [asyncio.create_task(wrapped_process(path)) for path in pdf_files]
             
             # Helper to signal when all tasks are done
-            async def monitor():
-                await asyncio.gather(*processing_tasks)
-                await results_queue.put(None) # Sentinel
+                async def monitor():
+                    await asyncio.gather(*processing_tasks)
+                    await results_queue.put(None) # Sentinel
 
-            asyncio.create_task(monitor())
+                asyncio.create_task(monitor())
 
-            while True:
-                line = await results_queue.get()
-                if line is None:
-                    break
-                yield line
-                await asyncio.sleep(0.01)
+                while True:
+                    line = await results_queue.get()
+                    if line is None:
+                        break
+                    yield line
+                    await asyncio.sleep(0.01)
+    
+                ProcessingService._shared_client = None
+
 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
