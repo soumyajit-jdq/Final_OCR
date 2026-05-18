@@ -17,6 +17,7 @@ import tempfile
 import logging
 import re
 import anyio
+import fitz
 
 from job_store import (
     create_job, get_job,
@@ -71,17 +72,29 @@ async def process_zip_job(job_id: str, zip_bytes: bytes):
                     update_job_file(job_id, filename, "failed", error=f"Validation: {validation.instruction}")
                     continue
 
-                # ── OCR (page-by-page) ──────────────────────────────
+                # ── OCR / Native Text Extraction (page-by-page) ──────────────────────
                 img_list, raw_text = await ProcessingService.process_pdf_pages(file_bytes, max_pages=50)
                 if not img_list:
                     update_job_file(job_id, filename, "failed", error="Could not extract pages from PDF")
                     continue
 
-                # Run OCR on each page (I/O bound, fast, no AI quota)
+                # Identify if this is a native text-based PDF (extremely fast local extraction)
+                is_native = len(raw_text) > 100 and any(c.isalpha() for c in raw_text)
+                
                 ocr_pages = []
-                for img in img_list:
-                    text = await ProcessingService.run_ocr(img)
-                    ocr_pages.append(text)
+                if is_native:
+                    logger.info(f"[Worker] Native text detected for {filename}. Skipping OCR for maximum performance!")
+                    def extract_native_pages():
+                        doc = fitz.open(stream=file_bytes, filetype="pdf")
+                        pages_text = [page.get_text().strip() for page in doc]
+                        doc.close()
+                        return pages_text
+                    ocr_pages = await anyio.to_thread.run_sync(extract_native_pages)
+                else:
+                    logger.info(f"[Worker] Scanned/Image PDF detected for {filename}. Running parallel high-speed OCR...")
+                    tasks = [ProcessingService.run_ocr(img) for img in img_list]
+                    ocr_pages = await asyncio.gather(*tasks)
+                    
                 ocr_text = "\n\n".join(ocr_pages)
 
                 # ── Page-level Classification ───────
