@@ -26,17 +26,8 @@ from service import ProcessingService
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────
-# RATE LIMIT CONFIG
-#
-# Gemini Free Tier:  15 requests/minute  → 1 req every 4 seconds
-# Cerebras Free:     30 requests/minute  → 1 req every 2 seconds
-#
-# We use 1 concurrent AI call at a time + 5 second delay between PDFs.
-# This keeps us at ~12 AI calls/minute, safely under the 15 RPM limit.
-# ─────────────────────────────────────────────────────────────────
 AI_CONCURRENCY   = asyncio.Semaphore(1)  # Only 1 AI extraction at a time
-INTER_PDF_DELAY  = 5.0                   # Seconds to wait between each PDF
+INTER_PDF_DELAY  = 0.5                   # Extremely short wait; we rely on 429 retry logic instead
 
 
 async def process_zip_job(job_id: str, zip_bytes: bytes):
@@ -93,37 +84,90 @@ async def process_zip_job(job_id: str, zip_bytes: bytes):
                     ocr_pages.append(text)
                 ocr_text = "\n\n".join(ocr_pages)
 
-                # ── Classification (keyword-first, no AI cost) ───────
-                doc_type = await ProcessingService.classify_document(ocr_text)
-                logger.info(f"[Worker] {filename} classified as: {doc_type}")
-
-                if doc_type == "unknown":
+                # ── Page-level Classification ───────
+                page_types = await ProcessingService.classify_pages(ocr_pages)
+                logger.info(f"[Worker] {filename} page classifications: {page_types}")
+                
+                unique_types = set(page_types)
+                if not unique_types:
                     update_job_file(job_id, filename, "failed", error="Could not classify document type")
                     continue
 
+                logger.info(f"\n==================== OCR TEXT FOR {filename} ====================\n{ocr_text}\n=======================================================================\n")
+
                 # ── AI Extraction (rate-limited) ─────────────────────
-                async with AI_CONCURRENCY:
-                    logger.info(f"[Worker] Extracting {filename} (type={doc_type})...")
-                    if doc_type == "marksheet":
-                        structured = await ProcessingService.extract_with_ai(img_list, ocr_text)
-                    elif doc_type == "transcript":
-                        structured = await ProcessingService.extract_transcript_with_ai(img_list, ocr_text)
-                    elif doc_type == "certificate":
-                        structured = await ProcessingService.extract_certificate_with_ai(img_list, ocr_text)
-                    else:
-                        raise ValueError(f"Unsupported doc_type: {doc_type}")
+                
+                # 1. Process Marksheets
+                marksheet_indices = [i for i, t in enumerate(page_types) if t == "marksheet"]
+                if marksheet_indices:
+                    logger.info(f"[Worker] Extracting {len(marksheet_indices)} Marksheets from {filename}...")
+                    for m_idx, page_idx in enumerate(marksheet_indices):
+                        async with AI_CONCURRENCY:
+                            page_img = [img_list[page_idx]]
+                            page_text = ocr_pages[page_idx]
+                            
+                            structured_collection = await ProcessingService.extract_with_ai(page_img, page_text)
+                            marksheets = structured_collection.get("marksheets", [])
+                            for idx, ms_data in enumerate(marksheets):
+                                ledger_hash = await ProcessingService.generate_ledger_hash(ms_data, "marksheet")
+                                sub_name = f"{filename} (Marksheet {m_idx+1})"
+                                update_job_file(
+                                    job_id, sub_name,
+                                    status="success",
+                                    doc_type="marksheet",
+                                    data=ms_data,
+                                    ledger_hash=ledger_hash,
+                                    raw_text=page_text,
+                                )
+                                logger.info(f"[Worker] ✓ {sub_name} done. Hash: {ledger_hash[:20]}...")
 
-                # ── Hash ─────────────────────────────────────────────
-                ledger_hash = await ProcessingService.generate_ledger_hash(structured, doc_type)
+                # 2. Process Transcripts
+                transcript_indices = [i for i, t in enumerate(page_types) if t == "transcript"]
+                if transcript_indices:
+                    logger.info(f"[Worker] Extracting Transcript from {filename}...")
+                    async with AI_CONCURRENCY:
+                        trans_images = [img_list[i] for i in transcript_indices]
+                        trans_text = "\n\n".join([ocr_pages[i] for i in transcript_indices])
+                        
+                        structured = await ProcessingService.extract_transcript_with_ai(trans_images, trans_text)
+                        ledger_hash = await ProcessingService.generate_ledger_hash(structured, "transcript")
+                        sub_filename = f"{filename} (Transcript)" if len(unique_types) > 1 else filename
+                        
+                        update_job_file(
+                            job_id, sub_filename,
+                            status="success",
+                            doc_type="transcript",
+                            data=structured,
+                            ledger_hash=ledger_hash,
+                            raw_text=trans_text,
+                        )
+                        logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
 
-                update_job_file(
-                    job_id, filename,
-                    status="success",
-                    doc_type=doc_type,
-                    data=structured,
-                    ledger_hash=ledger_hash,
-                )
-                logger.info(f"[Worker] ✓ {filename} done. Hash: {ledger_hash[:20]}...")
+                # 3. Process Certificates
+                certificate_indices = [i for i, t in enumerate(page_types) if t == "certificate"]
+                if certificate_indices:
+                    logger.info(f"[Worker] Extracting Certificate from {filename}...")
+                    async with AI_CONCURRENCY:
+                        cert_images = [img_list[i] for i in certificate_indices]
+                        cert_text = "\n\n".join([ocr_pages[i] for i in certificate_indices])
+                        
+                        structured = await ProcessingService.extract_certificate_with_ai(cert_images, cert_text)
+                        ledger_hash = await ProcessingService.generate_ledger_hash(structured, "certificate")
+                        sub_filename = f"{filename} (Certificate)" if len(unique_types) > 1 else filename
+                        
+                        update_job_file(
+                            job_id, sub_filename,
+                            status="success",
+                            doc_type="certificate",
+                            data=structured,
+                            ledger_hash=ledger_hash,
+                            raw_text=cert_text,
+                        )
+                        logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
+
+                # Mark original parent file as done if we split it
+                if len(unique_types) > 1:
+                    update_job_file(job_id, filename, "success", doc_type="mixed", data={"msg": f"Split into {len(unique_types)} sub-records"})
 
             except Exception as e:
                 logger.error(f"[Worker] ✗ {filename} failed: {e}")

@@ -395,41 +395,80 @@ class ProcessingService:
             return None
 
     @staticmethod
-    async def classify_document(ocr_text: str) -> str:
-        """Uses keywords first, then Cerebras (Llama) to categorize the document type."""
+    async def classify_pages(ocr_pages: list[str]) -> list[str]:
+        """Classifies each page of a document individually and returns a list of types for each page.
+        Uses high-precision keyword matching and sticky fallback logic.
+        """
+        transcript_triggers = ["transcript", "academic record", "consolidated marks", "consolidated statement", "statement of grades", "provisional transcript", "official transcript"]
+        marksheet_triggers = ["student evaluation report", "evaluation report", "grade card", "memo of marks", "grade sheet", "semester grade report"]
+        certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate", "degree of", "diploma certificate"]
+
+        page_types = []
+        current_type = "transcript" # Default fallback for the first page
+
+        for text in ocr_pages:
+            text_lower = text.lower()
+            
+            # Identify types matching this page
+            found_types = set()
+            if any(t in text_lower for t in certificate_triggers):
+                found_types.add("certificate")
+            if any(t in text_lower for t in marksheet_triggers):
+                found_types.add("marksheet")
+            if any(t in text_lower for t in transcript_triggers):
+                found_types.add("transcript")
+                
+            if len(found_types) == 1:
+                page_type = list(found_types)[0]
+            elif "certificate" in found_types:
+                page_type = "certificate"
+            elif "marksheet" in found_types:
+                page_type = "marksheet"
+            elif "transcript" in found_types:
+                page_type = "transcript"
+            else:
+                page_type = current_type
+                
+            page_types.append(page_type)
+            current_type = page_type
+
+        return page_types
+
+    @staticmethod
+    async def classify_document(ocr_text: str) -> list[str]:
+        """Uses keywords first to find ALL document types present. If none, asks AI."""
         text_lower = ocr_text.lower()
         
         # 1. Faster, more reliable Keyword Map
         # 1. High-Confidence Keyword Map
-        # Priorities: Certificate -> Marksheet (Single Semester/Evaluation Report) -> Transcript (Consolidated)
         transcript_triggers = ["transcript", "academic record", "consolidated marks", "consolidated statement", "statement of grades", "provisional transcript", "official transcript"]
-        marksheet_triggers = ["marksheet", "student evaluation report", "evaluation report", "statement of marks", "grade card", "memo of marks", "grade sheet", "provisional marks", "semester grade report", "result", "semester", "sem "]
+        marksheet_triggers = ["marksheet", "student evaluation report", "evaluation report", "statement of marks", "grade card", "memo of marks", "grade sheet", "provisional marks", "semester grade report"]
         certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate", "degree of", "diploma certificate"]
 
-        # 1. Check for Certificates (very specific legal language)
+        found_types = set()
+
         if any(t in text_lower for t in certificate_triggers):
-            return "certificate"
-            
-        # 2. Check for Marksheets (including Evaluation Reports)
+            found_types.add("certificate")
         if any(t in text_lower for t in marksheet_triggers):
-            return "marksheet"
-            
-        # 3. Check for Transcripts (Consolidated)
+            found_types.add("marksheet")
         if any(t in text_lower for t in transcript_triggers):
-            return "transcript"
+            found_types.add("transcript")
+            
+        if found_types:
+            return list(found_types)
 
         # 2. Fallback to AI Classification
         if not CEREBRAS_API_KEY:
-            return "unknown"
+            return ["unknown"]
         try:
             url = "https://api.cerebras.ai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
             prompt = (
-                "Identify the document type strictly based on scope:\n"
+                "Identify ALL the document types present in this text strictly based on scope:\n"
                 "1. 'marksheet': A record for a single semester/year (e.g., 'Grade Card').\n"
                 "2. 'transcript': A multi-page consolidated record of all years/semesters.\n"
                 "3. 'certificate': A single-page document conferring a degree (e.g., 'Degree Certificate').\n\n"
-                "Respond ONLY with one word: 'marksheet', 'certificate', or 'transcript'.\n\n"
+                "Respond with a comma-separated list of the types found (e.g., 'marksheet, certificate').\n\n"
                 f"TEXT:\n{ocr_text[:4000]}"
             )
             payload = {
@@ -448,14 +487,16 @@ class ProcessingService:
 
             content = res.json()["choices"][0]["message"]["content"].lower().strip()
             logger.info(f"AI Classification Raw Result: {content}")
-                
-            if "marksheet" in content: return "marksheet"
-            if "certificate" in content: return "certificate"
-            if "transcript" in content: return "transcript"
-            return "unknown"
+            
+            ai_types = set()
+            if "marksheet" in content: ai_types.add("marksheet")
+            if "certificate" in content: ai_types.add("certificate")
+            if "transcript" in content: ai_types.add("transcript")
+            
+            return list(ai_types) if ai_types else ["unknown"]
         except Exception as e:
             logger.error(f"Document classification failed: {e}")
-            return "unknown"
+            return ["unknown"]
 
     @staticmethod
     async def gemini_generate_with_retry(prompt: str, schema, images: list = None, retries: int = 5):
@@ -485,22 +526,10 @@ class ProcessingService:
                 )
                 return json.loads(response.text)
             except Exception as e:
-                error_msg = str(e).upper()
-                is_retryable = False
-                wait_time = (attempt + 1) * 2
-                
-                if "503" in error_msg or "UNAVAILABLE" in error_msg:
-                    is_retryable = True
-                elif "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "QUOTA" in error_msg:
-                    is_retryable = True
-                    wait_time = 10  # Default solid backoff for rate limits
-                    # Dynamically parse recommended retry delay from API error message if present
-                    match = re.search(r"retry in ([\d\.]+)s", str(e), re.IGNORECASE)
-                    if match:
-                        wait_time = int(float(match.group(1))) + 1
-                    logger.warning(f"Gemini API Rate Limit (429/RESOURCE_EXHAUSTED) hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{retries})")
-                
-                if is_retryable and attempt < retries - 1:
+                error_msg = str(e)
+                if ("503" in error_msg or "UNAVAILABLE" in error_msg) and attempt < retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    logger.warning(f"Gemini 503/Unavailable, retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
                     await anyio.sleep(wait_time)
                 else:
                     raise e
@@ -510,11 +539,11 @@ class ProcessingService:
         """Processes OCR text using Gemini (Priority) or Cerebras to produce structured JSON."""
         prompt = f"""
 STRICT INSTRUCTION: You are a stateless, automated JSON parsing application. 
-1. DO NOT use external knowledge or your own training data to fill fields.
-2. DO NOT save, store, or remember any information from this request.
-3. Extract data VERBATIM from the OCR text provided below.
-4. If a field is not found in the text, return an empty string.
-5. Your role is STRICTLY a text-to-JSON converter.
+1. The OCR text below may contain MULTIPLE Evaluation Reports / Marksheets for different semesters or students.
+2. You MUST extract EACH Evaluation Report into its own separate Marksheet object within the 'marksheets' array.
+3. DO NOT use external knowledge or your own training data to fill fields.
+4. Extract data VERBATIM from the OCR text provided below.
+5. If a field is not found in the text, return an empty string.
 
 #### EXTRACTION RULES ####
 - **Non-Credit Courses**: If a course is indicated as non-credit or has no numeric credit points (e.g., PGS 503), set "credit_points" to '---'.
@@ -523,29 +552,15 @@ STRICT INSTRUCTION: You are a stateless, automated JSON parsing application.
 OCR TEXT:
 {ocr_text}
 
-JSON FORMAT:
-{{
-  "registration_no": "...",
-  "name": "...",
-  "gpa": "...",
-  "subjects": [
-    {{
-      "code": "...", 
-      "title": "...", 
-      "credits": "...",
-      "grade": "...",
-      "credit_points": "..."
-    }}
-  ]
-}}
-Return ONLY the JSON.
+Return ONLY the JSON matching the MarkSheetCollection schema.
 """
 
         # 1. Try Gemini First (LLM + Vision)
         if GEMINI_API_KEY:
             try:
-                # Always provide images to Gemini if available for best context
-                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetData, images=image_data)
+                from models import MarkSheetCollection
+                # ── Ensure rate-limit backoff is used ──
+                result = await ProcessingService.gemini_generate_with_retry(prompt, MarkSheetCollection, images=image_data)
                 logger.info("Gemini Extraction successful (Multi-modal).")
                 return result
             except Exception as e:

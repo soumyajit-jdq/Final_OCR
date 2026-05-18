@@ -7,6 +7,7 @@ from job_store import create_job, get_job
 from worker import process_zip_job
 import zipfile
 import io
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -249,10 +250,13 @@ async def bulk_process_zip_async(file: UploadFile = File()):
     # Peek inside the ZIP to get filenames for the job record
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            pdf_names = sorted(
+            # Use os.path.basename to normalize — worker.py also uses basename
+            # This prevents key mismatches like "folder/file.pdf" vs "file.pdf"
+            raw_names = [
                 name for name in zf.namelist()
                 if name.lower().endswith(".pdf") and not name.startswith("__MACOSX")
-            )
+            ]
+            pdf_names = sorted(set(os.path.basename(name) for name in raw_names))
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP.")
 

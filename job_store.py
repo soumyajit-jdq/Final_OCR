@@ -36,21 +36,46 @@ def create_job(total_files: int, filenames: list[str]) -> str:
         "results": [],
         # Pre-populate file states so the frontend can render a progress grid immediately
         "files": {name: {"status": "pending", "doc_type": None, "error": None} for name in filenames},
+        "original_files": filenames,
+        "original_total": total_files,
     }
     logger.info(f"[Job Store] Created job {job_id} with {total_files} files.")
     return job_id
 
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
-    return _jobs.get(job_id)
+    job = _jobs.get(job_id)
+    if not job:
+        return None
+    
+    # Calculate parent PDF completion counts dynamically
+    original_files = job.get("original_files", [])
+    files = job.get("files", {})
+    
+    completed_parents = 0
+    for name in original_files:
+        f_state = files.get(name, {})
+        if f_state.get("status") in ("success", "failed", "error"):
+            completed_parents += 1
+            
+    job_copy = dict(job)
+    job_copy["completed_parents"] = completed_parents
+    job_copy["total_parents"] = job.get("original_total", len(original_files))
+    return job_copy
 
 
 def update_job_file(job_id: str, filename: str, status: str, doc_type: str = None,
-                    data: dict = None, error: str = None, ledger_hash: str = None):
+                    data: dict = None, error: str = None, ledger_hash: str = None,
+                    raw_text: str = None):
     """Atomically update a single file's result inside a job."""
     job = _jobs.get(job_id)
     if not job:
         return
+
+    # If this is a dynamically added sub-file, track it in the total
+    if filename not in job["files"]:
+        job["total"] += 1
+        job["files"][filename] = {}
 
     job["files"][filename] = {
         "status": status,
@@ -65,6 +90,7 @@ def update_job_file(job_id: str, filename: str, status: str, doc_type: str = Non
             "doc_type": doc_type,
             "data": data,
             "ledger_hash": ledger_hash,
+            "raw_text": raw_text,
         })
         job["completed"] += 1
     elif status in ("failed", "error"):

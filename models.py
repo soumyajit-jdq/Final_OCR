@@ -16,6 +16,9 @@ class MarkSheetData(BaseModel):
     gpa: Optional[str] = Field(None, description="Grade Point Average")
     subjects: List[Subject]
 
+class MarkSheetCollection(BaseModel):
+    marksheets: List[MarkSheetData] = Field(..., description="List of all marksheets/evaluation reports found in the document")
+
 class CertificateData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
     certificate_no: str = Field(..., description="Certificate Number (e.g., top right number)")
