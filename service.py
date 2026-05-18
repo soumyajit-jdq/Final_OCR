@@ -485,10 +485,22 @@ class ProcessingService:
                 )
                 return json.loads(response.text)
             except Exception as e:
-                error_msg = str(e)
-                if ("503" in error_msg or "UNAVAILABLE" in error_msg) and attempt < retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    logger.warning(f"Gemini 503/Unavailable, retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
+                error_msg = str(e).upper()
+                is_retryable = False
+                wait_time = (attempt + 1) * 2
+                
+                if "503" in error_msg or "UNAVAILABLE" in error_msg:
+                    is_retryable = True
+                elif "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "QUOTA" in error_msg:
+                    is_retryable = True
+                    wait_time = 10  # Default solid backoff for rate limits
+                    # Dynamically parse recommended retry delay from API error message if present
+                    match = re.search(r"retry in ([\d\.]+)s", str(e), re.IGNORECASE)
+                    if match:
+                        wait_time = int(float(match.group(1))) + 1
+                    logger.warning(f"Gemini API Rate Limit (429/RESOURCE_EXHAUSTED) hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{retries})")
+                
+                if is_retryable and attempt < retries - 1:
                     await anyio.sleep(wait_time)
                 else:
                     raise e

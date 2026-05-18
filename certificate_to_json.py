@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 OCR_API_KEY = os.getenv("OCR_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-CEREBRAS_API_KEY=os.getenv("CEREBRAS_API_KEY", "")
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").split(",")[0].strip()
 
 app = FastAPI(title="Certificate AI Parser")
 

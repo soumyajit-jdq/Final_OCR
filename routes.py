@@ -1,7 +1,12 @@
+import asyncio
 from fastapi import APIRouter, File, UploadFile, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from service import ProcessingService
 from models import MarkSheetData, ValidationResponse, TranscriptData, CertificateData, BulkProcessingResponse
+from job_store import create_job, get_job
+from worker import process_zip_job
+import zipfile
+import io
 import logging
 
 logger = logging.getLogger(__name__)
@@ -224,6 +229,71 @@ async def bulk_process_zip(file: UploadFile = File()):
     except Exception as e:
         logger.exception("Bulk ZIP processing failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ASYNC JOB QUEUE ROUTES  (Production-grade, rate-limit safe)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/bulk_process_zip_async", status_code=202)
+async def bulk_process_zip_async(file: UploadFile = File()):
+    """
+    Accepts a ZIP of PDFs, immediately returns a job_id (202 Accepted).
+    Processing happens in the background with strict rate-limiting.
+    Poll GET /api/v1/job/{job_id} for real-time progress.
+    """
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported.")
+
+    zip_bytes = await file.read()
+
+    # Peek inside the ZIP to get filenames for the job record
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            pdf_names = sorted(
+                name for name in zf.namelist()
+                if name.lower().endswith(".pdf") and not name.startswith("__MACOSX")
+            )
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP.")
+
+    if not pdf_names:
+        raise HTTPException(status_code=400, detail="No PDF files found inside the ZIP.")
+
+    # Create job record (returns instantly)
+    job_id = create_job(total_files=len(pdf_names), filenames=pdf_names)
+    logger.info(f"[Route] Created job {job_id} for {len(pdf_names)} PDFs. Launching background worker...")
+
+    # Fire-and-forget — does not block the HTTP response
+    asyncio.create_task(process_zip_job(job_id, zip_bytes))
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "pending",
+            "total_files": len(pdf_names),
+            "filenames": pdf_names,
+            "message": f"Job accepted. {len(pdf_names)} PDFs queued for processing.",
+            "poll_url": f"/api/v1/job/{job_id}",
+        }
+    )
+
+
+@router.get("/job/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    Poll this endpoint to get real-time progress of a bulk processing job.
+    Returns overall status, per-file states, and completed results.
+    """
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    return JSONResponse(content=job)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEGACY STREAMING ROUTE (kept for backward compatibility)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/log_merkle")
 async def log_merkle(payload: dict):
