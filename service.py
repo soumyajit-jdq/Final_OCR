@@ -313,6 +313,7 @@ class ProcessingService:
                 return "0x" + "0" * 64
 
             ledger_hash = await ProcessingService.generate_keccak256(payload)
+            logger.info(f"[CANONICAL PAYLOAD] {doc_type}: {payload}")
             logger.info(f"Generated Ledger Hash for manual anchoring ({doc_type}): {ledger_hash}")
             return ledger_hash
         except Exception as e:

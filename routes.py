@@ -83,7 +83,13 @@ async def extract_document(file: UploadFile = File()):
         structured_dict = await ProcessingService.extract_with_ai(processing_image, ocr_text)
         
         # 4. Final Object Construction
-        return MarkSheetData(**structured_dict)
+        # Since extract_with_ai returns a MarkSheetCollection dict containing a 'marksheets' list,
+        # we extract the first marksheet for single-document ingestion routes.
+        marksheets = structured_dict.get("marksheets", [])
+        if not marksheets:
+            raise HTTPException(status_code=500, detail="No marksheet data extracted from the document.")
+        
+        return MarkSheetData(**marksheets[0])
         
     except HTTPException as he:
         raise he
