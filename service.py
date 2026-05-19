@@ -821,9 +821,27 @@ Return ONLY JSON.
                                     is_new_group = True
                                 elif current_group['type'] != page_type:
                                     is_new_group = True
-                                elif page_type in ['certificate', 'marksheet']:
-                                    if "evaluation report" in text.lower() or "certificate" in text.lower():
+                                else:
+                                    # Same type. Let's check for split indicators.
+                                    if page_type == 'certificate':
                                         is_new_group = True
+                                    elif page_type == 'marksheet':
+                                        if "evaluation report" in text.lower() or "marksheet" in text.lower() or "statement of marks" in text.lower():
+                                            is_new_group = True
+                                    elif page_type == 'transcript':
+                                        text_lower = text.lower()
+                                        has_start_keyword = any(kw in text_lower for kw in [
+                                            "official transcript", "transcript of academic record", 
+                                            "consolidated statement", "transcript of record"
+                                        ])
+                                        has_header_field = any(kw in text_lower for kw in [
+                                            "name of student", "name of candidate", "registration no", "regn. no", 
+                                            "roll no", "enrollment no", "admission year", "completion year"
+                                        ])
+                                        if has_start_keyword:
+                                            is_new_group = True
+                                        elif has_header_field and not any(kw in text_lower for kw in ["continued", "page 2", "page 3", "page 4"]):
+                                            is_new_group = True
 
                                 if is_new_group:
                                     current_group = {'type': page_type, 'pages': [i], 'images': [img], 'text': text}
