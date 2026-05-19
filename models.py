@@ -23,6 +23,7 @@ class CertificateData(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
     certificate_no: str = Field(..., description="Certificate Number (e.g., top right number)")
     no: str = Field(..., description="Reference Number (e.g., bottom left No. suffix)")
+    registration_no: Optional[str] = Field(None, description="Student Registration or Enrollment Number")
     # university: Optional[str] = Field(None, description="Issuing University Name")
     name: str = Field(..., description="Student Name")
     degree: str = Field(..., description="Degree conferred")

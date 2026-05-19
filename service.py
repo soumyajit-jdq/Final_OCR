@@ -442,7 +442,7 @@ class ProcessingService:
         # 1. Faster, more reliable Keyword Map
         # 1. High-Confidence Keyword Map
         transcript_triggers = ["transcript", "academic record", "consolidated marks", "consolidated statement", "statement of grades", "provisional transcript", "official transcript"]
-        marksheet_triggers = ["marksheet", "student evaluation report", "evaluation report", "statement of marks", "grade card", "memo of marks", "grade sheet", "provisional marks", "semester grade report"]
+        marksheet_triggers = ["marksheet", "student evaluation report", "evaluation report", "statement of marks", "grade card", "memo of marks", "grade sheet", "provisional marks", "semester grade report", "STATEMENT OF MARKS"]
         certificate_triggers = ["degree certificate", "conferred upon", "passing certificate", "provisional certificate", "degree of", "diploma certificate"]
 
         found_types = set()
@@ -526,10 +526,13 @@ class ProcessingService:
                 )
                 return json.loads(response.text)
             except Exception as e:
-                error_msg = str(e)
-                if ("503" in error_msg or "UNAVAILABLE" in error_msg) and attempt < retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    logger.warning(f"Gemini 503/Unavailable, retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
+                error_msg = str(e).lower()
+                is_retryable = any(term in error_msg for term in [
+                    "503", "unavailable", "429", "resource_exhausted", "quota", "rate limit", "too many requests"
+                ])
+                if is_retryable and attempt < retries - 1:
+                    wait_time = (attempt + 1) * 3 + (attempt * 2)
+                    logger.warning(f"Gemini API rate-limit or transient error detected. Retrying in {wait_time}s... (Attempt {attempt+1}/{retries}). Error: {error_msg}")
                     await anyio.sleep(wait_time)
                 else:
                     raise e

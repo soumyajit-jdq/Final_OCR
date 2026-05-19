@@ -27,7 +27,7 @@ from service import ProcessingService
 
 logger = logging.getLogger(__name__)
 
-AI_CONCURRENCY   = asyncio.Semaphore(1)  # Only 1 AI extraction at a time
+AI_CONCURRENCY   = asyncio.Semaphore(3)  # Run up to 3 AI extractions in parallel
 INTER_PDF_DELAY  = 0.5                   # Extremely short wait; we rely on 429 retry logic instead
 
 
@@ -108,13 +108,14 @@ async def process_zip_job(job_id: str, zip_bytes: bytes):
 
                 logger.info(f"\n==================== OCR TEXT FOR {filename} ====================\n{ocr_text}\n=======================================================================\n")
 
-                # ── AI Extraction (rate-limited) ─────────────────────
-                
+                # ── AI Extraction (rate-limited, fully concurrent) ───────────────────
+                extraction_tasks = []
+
                 # 1. Process Marksheets
                 marksheet_indices = [i for i, t in enumerate(page_types) if t == "marksheet"]
                 if marksheet_indices:
-                    logger.info(f"[Worker] Extracting {len(marksheet_indices)} Marksheets from {filename}...")
-                    for m_idx, page_idx in enumerate(marksheet_indices):
+                    logger.info(f"[Worker] Queueing {len(marksheet_indices)} Marksheets from {filename} for concurrent AI extraction...")
+                    async def extract_single_marksheet(m_idx, page_idx):
                         async with AI_CONCURRENCY:
                             page_img = [img_list[page_idx]]
                             page_text = ocr_pages[page_idx]
@@ -134,49 +135,62 @@ async def process_zip_job(job_id: str, zip_bytes: bytes):
                                 )
                                 logger.info(f"[Worker] ✓ {sub_name} done. Hash: {ledger_hash[:20]}...")
 
+                    for m_idx, page_idx in enumerate(marksheet_indices):
+                        extraction_tasks.append(extract_single_marksheet(m_idx, page_idx))
+
                 # 2. Process Transcripts
                 transcript_indices = [i for i, t in enumerate(page_types) if t == "transcript"]
                 if transcript_indices:
-                    logger.info(f"[Worker] Extracting Transcript from {filename}...")
-                    async with AI_CONCURRENCY:
-                        trans_images = [img_list[i] for i in transcript_indices]
-                        trans_text = "\n\n".join([ocr_pages[i] for i in transcript_indices])
-                        
-                        structured = await ProcessingService.extract_transcript_with_ai(trans_images, trans_text)
-                        ledger_hash = await ProcessingService.generate_ledger_hash(structured, "transcript")
-                        sub_filename = f"{filename} (Transcript)" if len(unique_types) > 1 else filename
-                        
-                        update_job_file(
-                            job_id, sub_filename,
-                            status="success",
-                            doc_type="transcript",
-                            data=structured,
-                            ledger_hash=ledger_hash,
-                            raw_text=trans_text,
-                        )
-                        logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
+                    async def extract_transcript_task():
+                        logger.info(f"[Worker] Queueing Transcript from {filename} for AI extraction...")
+                        async with AI_CONCURRENCY:
+                            trans_images = [img_list[i] for i in transcript_indices]
+                            trans_text = "\n\n".join([ocr_pages[i] for i in transcript_indices])
+                            
+                            structured = await ProcessingService.extract_transcript_with_ai(trans_images, trans_text)
+                            ledger_hash = await ProcessingService.generate_ledger_hash(structured, "transcript")
+                            sub_filename = f"{filename} (Transcript)" if len(unique_types) > 1 else filename
+                            
+                            update_job_file(
+                                job_id, sub_filename,
+                                status="success",
+                                doc_type="transcript",
+                                data=structured,
+                                ledger_hash=ledger_hash,
+                                raw_text=trans_text,
+                            )
+                            logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
+
+                    extraction_tasks.append(extract_transcript_task())
 
                 # 3. Process Certificates
                 certificate_indices = [i for i, t in enumerate(page_types) if t == "certificate"]
                 if certificate_indices:
-                    logger.info(f"[Worker] Extracting Certificate from {filename}...")
-                    async with AI_CONCURRENCY:
-                        cert_images = [img_list[i] for i in certificate_indices]
-                        cert_text = "\n\n".join([ocr_pages[i] for i in certificate_indices])
-                        
-                        structured = await ProcessingService.extract_certificate_with_ai(cert_images, cert_text)
-                        ledger_hash = await ProcessingService.generate_ledger_hash(structured, "certificate")
-                        sub_filename = f"{filename} (Certificate)" if len(unique_types) > 1 else filename
-                        
-                        update_job_file(
-                            job_id, sub_filename,
-                            status="success",
-                            doc_type="certificate",
-                            data=structured,
-                            ledger_hash=ledger_hash,
-                            raw_text=cert_text,
-                        )
-                        logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
+                    async def extract_certificate_task():
+                        logger.info(f"[Worker] Queueing Certificate from {filename} for AI extraction...")
+                        async with AI_CONCURRENCY:
+                            cert_images = [img_list[i] for i in certificate_indices]
+                            cert_text = "\n\n".join([ocr_pages[i] for i in certificate_indices])
+                            
+                            structured = await ProcessingService.extract_certificate_with_ai(cert_images, cert_text)
+                            ledger_hash = await ProcessingService.generate_ledger_hash(structured, "certificate")
+                            sub_filename = f"{filename} (Certificate)" if len(unique_types) > 1 else filename
+                            
+                            update_job_file(
+                                job_id, sub_filename,
+                                status="success",
+                                doc_type="certificate",
+                                data=structured,
+                                ledger_hash=ledger_hash,
+                                raw_text=cert_text,
+                            )
+                            logger.info(f"[Worker] ✓ {sub_filename} done. Hash: {ledger_hash[:20]}...")
+
+                    extraction_tasks.append(extract_certificate_task())
+
+                # Run ALL sub-tasks concurrently (throttled by AI_CONCURRENCY limit of 3)
+                if extraction_tasks:
+                    await asyncio.gather(*extraction_tasks)
 
                 # Mark original parent file as done if we split it
                 if len(unique_types) > 1:
