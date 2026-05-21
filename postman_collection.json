@@ -1,0 +1,179 @@
+{
+	"info": {
+		"_postman_id": "c1a2d3e4-f5a6-7b8c-9d0e-1f2g3h4i5j6k",
+		"name": "MarkSheet OCR API",
+		"description": "Collection for testing the JadeQuest Final OCR service on Render.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Status",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						""
+					]
+				},
+				"description": "Checks if the FastAPI server is running and the root health check is active."
+			},
+			"response": []
+		},
+		{
+			"name": "Quality Validation",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Select an image or PDF to validate quality (blur, skew, etc.)"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/validate",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"validate"
+					]
+				},
+				"description": "Runs preprocessing checks on the document without performing full OCR extraction."
+			},
+			"response": []
+		},
+		{
+			"name": "Marksheet Extraction",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Upload a marksheet for structured AI data extraction."
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/marksheet_data_extraction",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"marksheet_data_extraction"
+					]
+				},
+				"description": "Full pipeline: Validation -> OCR -> AI Parsing -> Structured JSON output."
+			},
+			"response": []
+		},
+		{
+			"name": "Certificate Extraction",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Upload a certificate for extraction."
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/certificate",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"certificate"
+					]
+				},
+				"description": "Endpoint for academic certificate processing."
+			},
+			"response": []
+		},
+		{
+			"name": "Transcript Extraction",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Upload a transcript for extraction."
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/transcript",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"transcript"
+					]
+				},
+				"description": "Endpoint for multi-page transcript processing."
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://final-ocr.onrender.com",
+			"type": "string"
+		}
+	]
+}
